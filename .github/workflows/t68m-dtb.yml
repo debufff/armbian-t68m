@@ -1,66 +1,71 @@
-# .github/workflows/dts2dtb.yml
-name: Compile T68M DTS to DTB (Correct)
+name: Compile T68M (8GB Disk + Xfce)
 on: [workflow_dispatch]
 
 jobs:
-  build-dtb:
+  build:
     runs-on: ubuntu-22.04
+    timeout-minutes: 180
     steps:
-      - name: Checkout your repository
+      - name: Checkout your T68M config
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
-      - name: Install dependencies
+      - name: Download Armbian source
+        run: |
+          git clone --depth=1 https://github.com/armbian/build.git armbian-build
+          sudo chown -R $USER:$USER armbian-build
+
+      - name: Overwrite T68M config
+        run: |
+          mkdir -p armbian-build/config/boards/ armbian-build/config/kernel/
+          cp -f config/boards/lyt-t68m.conf armbian-build/config/boards/ || true
+          cp -f config/kernel/linux-rk35xx-legacy.config armbian-build/config/kernel/ || true
+
+      - name: Fix patching.py bug
+        run: |
+          sed -i 's/console_width = int(os.environ.get("COLUMNS", 160)) - 12/console_width = int(os.environ.get("COLUMNS", "160")) - 12/' armbian-build/lib/tools/patching.py
+
+      - name: Install basic dependencies
         run: |
           sudo apt update
-          sudo apt install -y device-tree-compiler
+          sudo apt install -y qemu-user-static binfmt-support
+          sudo update-binfmts --enable qemu-aarch64
 
-      - name: Download Rockchip RK3568 DTS sources (fix missing includes)
+      - name: Compile T68M with Xfce desktop
         run: |
-          # 创建存放官方 dts 和 dt-bindings 的目录
-          mkdir -p rk-dts
-          cd rk-dts
+          cd armbian-build
+          export SKIP_BINFMT_SETUP=1
+          ./compile.sh \
+              BOARD=lyt-t68m \
+              BRANCH=current \
+              RELEASE=jammy \
+              BUILD_MINIMAL=no \
+              BUILD_DESKTOP=yes \
+              # 核心修改：替换为Xfce桌面
+              DESKTOP_ENVIRONMENT=xfce \
+              DESKTOP_ENVIRONMENT_CONFIG_NAME=config_base \
+              DESKTOP_APPGROUPS_SELECTED="" \
+              EXPERT=1 \
+              KERNEL_CONFIGURE=no \
+              FAMILY=rockchip-rk3568 \
+              KERNELVERSION=6.1.12-current \
+              ARCH=arm64
 
-          # 下载官方 RK3568 内核树（包含所有 dtsi / dt-bindings）
-          # 这是解决 #include "rk3568.dtsi" 与 <dt-bindings/xxx.h> 缺失的关键
-          wget https://github.com/rockchip-linux/kernel/archive/refs/heads/develop-5.10.zip -O kernel.zip
-          unzip -q kernel.zip
-          mv kernel-develop-5.10 linux
-
-          # 软链接你的 DTS 到官方目录（方便编译）
-          cd ..
-          ln -s $(pwd)/userpatches/board-dts/rk3568-lyt-t68m.dts rk-dts/linux/arch/arm64/boot/dts/rockchip/
-
-      - name: Compile DTS with full includes
+      - name: List output files (verify DTB exists)
         run: |
-          DTS_FILE="userpatches/board-dts/rk3568-lyt-t68m.dts"
-          DTB_FILE="${DTS_FILE%.dts}.dtb"
-          RK_DTS_DIR="rk-dts/linux/arch/arm64/boot/dts/rockchip"
-          DT_BINDINGS_DIR="rk-dts/linux/include/dt-bindings"
+          # 列出编译产物，确认DTB文件存在
+          ls -lh armbian-build/output/images/
+          # 显式检查DTB文件（RK3568的DTB通常在镜像目录或boot分区内）
+          ls -lh armbian-build/output/images/*.dtb || echo "DTB文件已包含在镜像/boot目录中"
 
-          echo "📂 Using RK3568 official includes from: $RK_DTS_DIR"
-          
-          # 核心编译命令：指定 -i 搜索路径，彻底解决 "文件缺失"
-          # -i 指向官方 dtsi 目录
-          # -i 指向官方 dt-bindings 目录
-          cd rk-dts/linux/arch/arm64/boot/dts/rockchip/
-          dtc -I dts -O dtb -o "../../../../../../$DTB_FILE" \
-              -i "$RK_DTS_DIR" \
-              -i "$DT_BINDINGS_DIR" \
-              "$(basename $DTS_FILE)"
-
-          # 验证结果
-          if [ -f "$DTB_FILE" ]; then
-            echo "✅ 编译成功！文件路径: $(pwd)/../../../../../../$DTB_FILE"
-            ls -lh ../../../../../../userpatches/board-dts/*.dtb
-          else
-            echo "❌ 编译失败！"
-            exit 1
-          fi
-
-      - name: Upload DTB artifact
+      - name: Upload artifacts (include DTB)
         uses: actions/upload-artifact@v4
         with:
-          name: T68M-DTB
+          name: T68M-Xfce-rockchip64-6.12
+          # 上传所有编译产物（含镜像、DTB、内核、脚本等）
           path: |
-            userpatches/board-dts/rk3568-lyt-t68m.dtb
-            userpatches/board-dts/rk3568-lyt-t68m.dts
+            armbian-build/output/images/*
+            # 显式指定DTB文件（确保不遗漏）
+            armbian-build/output/images/*.dtb
+          retention-days: 7
