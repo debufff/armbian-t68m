@@ -5,16 +5,16 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      # 步骤1：先拉取你的 T68M 配置仓库（当前目录就是你的配置）
+      # 步骤1：只拉取你的 T68M 配置仓库（唯一一次 checkout）
       - name: Checkout your T68M config
         uses: actions/checkout@v4
 
-      # 步骤2：再拉取 Armbian 官方源码
-      - name: Checkout Armbian official source
-        uses: actions/checkout@v4
-        with:
-          repository: armbian/build
-          path: armbian-build
+      # 步骤2：直接下载 Armbian 官方源码（用 wget 下载 zip，不走 Git）
+      - name: Download Armbian official source
+        run: |
+          wget -O armbian-build.zip https://github.com/armbian/build/archive/refs/heads/main.zip
+          unzip -q armbian-build.zip
+          mv build-main armbian-build  # 重命名为 armbian-build
 
       # 步骤3：覆盖配置（现在你的 config/ 和 userpatches/ 就在当前目录）
       - name: Overwrite all T68M config
