@@ -22,13 +22,13 @@ jobs:
           mkdir -p armbian-build/userpatches/
           cp -rf userpatches/* armbian-build/userpatches/
 
+      # ✅ 关键修复：只安装 qemu-user-static，它已包含 qemu-aarch64
       - name: Install minimal dependencies (only ARM64 needed)
         run: |
           sudo apt update
-          sudo apt install -y qemu-user-static qemu-aarch64 binfmt-support
+          sudo apt install -y qemu-user-static binfmt-support
           sudo update-binfmts --enable qemu-aarch64
 
-      # ✅ 关键修复：用 sed 修复 patching.py 中的空 COLUMNS 问题
       - name: Fix patching.py console_width bug
         run: |
           sed -i 's/console_width = int(os.environ.get("COLUMNS", 160)) - 12/console_width = int(os.environ.get("COLUMNS", "160")) - 12/' armbian-build/lib/tools/patching.py
