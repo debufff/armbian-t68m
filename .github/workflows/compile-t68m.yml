@@ -5,18 +5,15 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      # 步骤1：只拉取你的 T68M 配置仓库（唯一一次 checkout）
       - name: Checkout your T68M config
         uses: actions/checkout@v4
 
-      # 步骤2：直接下载 Armbian 官方源码（用 wget 下载 zip，不走 Git）
       - name: Download Armbian official source
         run: |
           wget -O armbian-build.zip https://github.com/armbian/build/archive/refs/heads/main.zip
           unzip -q armbian-build.zip
-          mv build-main armbian-build  # 重命名为 armbian-build
+          mv build-main armbian-build
 
-      # 步骤3：覆盖配置（现在你的 config/ 和 userpatches/ 就在当前目录）
       - name: Overwrite all T68M config
         run: |
           cp -f config/boards/lyt-t68m.conf armbian-build/config/boards/
@@ -24,7 +21,6 @@ jobs:
           mkdir -p armbian-build/userpatches/
           cp -rf userpatches/* armbian-build/userpatches/
 
-      # 步骤4：安装依赖
       - name: Install dependencies
         run: |
           cd armbian-build
@@ -32,7 +28,7 @@ jobs:
           sudo apt install -y qemu-user-static binfmt-support
           sudo update-binfmts --enable qemu-aarch64
 
-      # 步骤5：编译 T68M 镜像
+      # ✅ 关键修复：添加 EXPERT=1 和 DESKTOP_APPGROUPS_SELECTED="" 彻底跳过所有交互
       - name: Compile T68M image
         run: |
           cd armbian-build
@@ -42,12 +38,15 @@ jobs:
               RELEASE=jammy \
               BUILD_MINIMAL=no \
               BUILD_DESKTOP=yes \
+              DESKTOP_ENVIRONMENT=gnome \
+              DESKTOP_ENVIRONMENT_CONFIG_NAME=config_base \
+              DESKTOP_APPGROUPS_SELECTED="" \
+              EXPERT=1 \
               KERNEL_CONFIGURE=no \
               FAMILY=rockchip-rk3568 \
               KERNELVERSION=6.1.12-current \
               ARCH=arm64
 
-      # 步骤6：上传产物
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
