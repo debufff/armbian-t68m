@@ -15,11 +15,9 @@ jobs:
           mv build-main armbian-build
           sudo chown -R $USER:$USER armbian-build
 
-      # ✅ 关键修复：指向你的实际 DTS 路径 userpatches/board-dts/
       - name: Overwrite T68M DTS config
         run: |
           mkdir -p armbian-build/userpatches/dts/
-          # 复制 board-dts 下的 DTS 文件到编译目录
           if ls userpatches/board-dts/* 1> /dev/null 2>&1; then
             cp -rf userpatches/board-dts/* armbian-build/userpatches/dts/
             echo "Copied DTS files from userpatches/board-dts/ to armbian-build/userpatches/dts/"
@@ -37,6 +35,7 @@ jobs:
         run: |
           sed -i 's/console_width = int(os.environ.get("COLUMNS", 160)) - 12/console_width = int(os.environ.get("COLUMNS", "160")) - 12/' armbian-build/lib/tools/patching.py
 
+      # ✅ 关键修复：添加 KERNEL_CONFIGURE=no 彻底跳过交互式内核配置
       - name: Compile T68M DTB only
         run: |
           cd armbian-build
@@ -46,6 +45,7 @@ jobs:
               BRANCH=current \
               KERNELVERSION=6.1.12-current \
               COMPILE_DTB_ONLY=yes \
+              KERNEL_CONFIGURE=no \
               FAMILY=rockchip-rk3568 \
               ARCH=arm64 \
               EXPERT=1
