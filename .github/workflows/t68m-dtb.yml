@@ -5,11 +5,9 @@ jobs:
   build-dtb:
     runs-on: ubuntu-22.04
     steps:
-      # 步骤1：拉取你的 T68M 配置仓库
       - name: Checkout your T68M config
         uses: actions/checkout@v4
 
-      # 步骤2：下载 Armbian 官方源码
       - name: Download Armbian official source
         run: |
           wget -O armbian-build.zip https://github.com/armbian/build/archive/refs/heads/main.zip
@@ -17,25 +15,28 @@ jobs:
           mv build-main armbian-build
           sudo chown -R $USER:$USER armbian-build
 
-      # 步骤3：覆盖你的 DTS 配置
+      # ✅ 关键修复：指向你的实际 DTS 路径 userpatches/board-dts/
       - name: Overwrite T68M DTS config
         run: |
           mkdir -p armbian-build/userpatches/dts/
-          cp -rf userpatches/dts/* armbian-build/userpatches/dts/
+          # 复制 board-dts 下的 DTS 文件到编译目录
+          if ls userpatches/board-dts/* 1> /dev/null 2>&1; then
+            cp -rf userpatches/board-dts/* armbian-build/userpatches/dts/
+            echo "Copied DTS files from userpatches/board-dts/ to armbian-build/userpatches/dts/"
+          else
+            echo "No DTS files found in userpatches/board-dts/, skipping copy"
+          fi
 
-      # 步骤4：安装编译依赖（仅 DTB 所需）
       - name: Install DTB compile dependencies
         run: |
           sudo apt update
           sudo apt install -y device-tree-compiler gcc-aarch64-linux-gnu qemu-user-static binfmt-support
           sudo update-binfmts --enable qemu-aarch64
 
-      # 步骤5：修复 patching.py 空 COLUMNS 问题（避免脚本报错）
       - name: Fix patching.py console_width bug
         run: |
           sed -i 's/console_width = int(os.environ.get("COLUMNS", 160)) - 12/console_width = int(os.environ.get("COLUMNS", "160")) - 12/' armbian-build/lib/tools/patching.py
 
-      # 步骤6：仅编译 DTB（核心步骤）
       - name: Compile T68M DTB only
         run: |
           cd armbian-build
@@ -49,11 +50,10 @@ jobs:
               ARCH=arm64 \
               EXPERT=1
 
-      # 步骤7：上传编译好的 DTB 文件
       - name: Upload T68M DTB
         uses: actions/upload-artifact@v4
         with:
           name: T68M-DTB-6.1.12
           path: |
             armbian-build/output/images/dtb/rockchip/rk3568-lyt-t68m.dtb
-            armbian-build/userpatches/dts/rk3568-lyt-t68m.dts # 同时上传源文件，方便对比
+            armbian-build/userpatches/dts/rk3568-lyt-t68m.dts
