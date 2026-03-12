@@ -1,4 +1,6 @@
-name: Compile T68M (8GB Disk + Xfce)
+# 工作流名称：编译 T68M 镜像（Xfce 桌面 + 完整配置复制 + 非交互模式）
+name: Compile T68M (rockchip64-6.12 + Xfce)
+# 触发方式：仅手动触发
 on: [workflow_dispatch]
 
 jobs:
@@ -6,43 +8,61 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 180
     steps:
+      # 步骤1：拉取你的完整配置仓库（包含 boards、kernel、userpatches）
       - name: Checkout your T68M config
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 1  # 浅克隆，节省时间和空间
 
-      - name: Download Armbian source
+      # 步骤2：下载 Armbian 官方源码
+      - name: Download Armbian official source
         run: |
           git clone --depth=1 https://github.com/armbian/build.git armbian-build
-          sudo chown -R $USER:$USER armbian-build
+          sudo chown -R $USER:$USER armbian-build  # 修复权限
 
-      - name: Overwrite T68M config
+      # 步骤3：完整复制所有配置（修复子目录复制问题）
+      - name: Overwrite all T68M config (recursive)
         run: |
-          mkdir -p armbian-build/config/boards/ armbian-build/config/kernel/
-          cp -f config/boards/lyt-t68m.conf armbian-build/config/boards/ || true
-          cp -f config/kernel/linux-rk35xx-legacy.config armbian-build/config/kernel/ || true
+          # 1. 复制 boards 设备配置
+          mkdir -p armbian-build/config/boards/
+          cp -f config/boards/lyt-t68m.conf armbian-build/config/boards/
+          
+          # 2. 复制 kernel 配置
+          mkdir -p armbian-build/config/kernel/
+          cp -f config/kernel/linux-rk35xx-legacy.config armbian-build/config/kernel/
+          
+          # 3. 递归复制 userpatches（包含 board-dts、kernel补丁等）
+          mkdir -p armbian-build/userpatches/
+          cp -rf userpatches/* armbian-build/userpatches/  # -rf 递归复制所有子目录
 
-      - name: Fix patching.py bug
-        run: |
-          sed -i 's/console_width = int(os.environ.get("COLUMNS", 160)) - 12/console_width = int(os.environ.get("COLUMNS", "160")) - 12/' armbian-build/lib/tools/patching.py
-
-      - name: Install basic dependencies
+      # 步骤4：安装 ARM64 依赖
+      - name: Install minimal dependencies (only ARM64 needed)
         run: |
           sudo apt update
           sudo apt install -y qemu-user-static binfmt-support
           sudo update-binfmts --enable qemu-aarch64
 
-      - name: Compile T68M with Xfce desktop
+      # 步骤5：修复 patching.py 控制台宽度 bug
+      - name: Fix patching.py console_width bug
+        run: |
+          sed -i 's/console_width = int(os.environ.get("COLUMNS", 160)) - 12/console_width = int(os.environ.get("COLUMNS", "160")) - 12/' armbian-build/lib/tools/patching.py
+
+      # 步骤6：编译 T68M 镜像（核心：通过环境变量禁用交互）
+      - name: Compile T68M image (Xfce desktop, non-interactive)
         run: |
           cd armbian-build
+          # 关键：设置环境变量强制非交互模式，避免 dialog 弹窗
+          export ARMBIAN_NON_INTERACTIVE=yes
           export SKIP_BINFMT_SETUP=1
+          export KERNEL_CONFIGURE=no
+          
+          # 编译命令（仅修改桌面为 Xfce，无其他改动）
           ./compile.sh \
               BOARD=lyt-t68m \
               BRANCH=current \
               RELEASE=jammy \
               BUILD_MINIMAL=no \
               BUILD_DESKTOP=yes \
-              # 核心修改：替换为Xfce桌面
               DESKTOP_ENVIRONMENT=xfce \
               DESKTOP_ENVIRONMENT_CONFIG_NAME=config_base \
               DESKTOP_APPGROUPS_SELECTED="" \
@@ -52,20 +72,16 @@ jobs:
               KERNELVERSION=6.1.12-current \
               ARCH=arm64
 
+      # 步骤7：验证编译产物（含 DTB）
       - name: List output files (verify DTB exists)
         run: |
-          # 列出编译产物，确认DTB文件存在
           ls -lh armbian-build/output/images/
-          # 显式检查DTB文件（RK3568的DTB通常在镜像目录或boot分区内）
-          ls -lh armbian-build/output/images/*.dtb || echo "DTB文件已包含在镜像/boot目录中"
+          ls -lh armbian-build/output/images/*.dtb || echo "DTB 文件已包含在镜像 /boot 目录中"
 
-      - name: Upload artifacts (include DTB)
+      # 步骤8：上传所有产物（含镜像、DTB、补丁等）
+      - name: Upload build artifacts (include DTB)
         uses: actions/upload-artifact@v4
         with:
-          name: T68M-Xfce-rockchip64-6.12
-          # 上传所有编译产物（含镜像、DTB、内核、脚本等）
-          path: |
-            armbian-build/output/images/*
-            # 显式指定DTB文件（确保不遗漏）
-            armbian-build/output/images/*.dtb
+          name: T68M-Xfce-rockchip64-6.12-image
+          path: armbian-build/output/images/*
           retention-days: 7
