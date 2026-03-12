@@ -12,24 +12,26 @@ jobs:
           repository: armbian/build
           path: armbian-build
 
-      # 步骤2：拉取你的 T68M 完整配置
+      # 步骤2：拉取你的 T68M 完整配置（修正为实际仓库名）
       - name: Checkout your T68M config
         uses: actions/checkout@v4
         with:
           repository: debufff/armbian-t68m
           path: t68m-config
 
-      # 步骤3：完整覆盖官方配置（包含补丁/DTS/内核配置）
+      # 步骤3：完整覆盖官方配置（新增创建 userpatches 目录）
       - name: Overwrite all T68M config
         run: |
           # 覆盖设备主配置
           cp -f t68m-config/config/boards/lyt-t68m.conf armbian-build/config/boards/
           # 覆盖内核配置文件
           cp -f t68m-config/config/kernel/linux-rk35xx-legacy.config armbian-build/config/kernel/
-          # 覆盖补丁文件
+          # 先创建 userpatches 目录（关键修复）
+          mkdir -p armbian-build/userpatches/
+          # 覆盖所有补丁/DTS
           cp -rf t68m-config/userpatches/* armbian-build/userpatches/
 
-      # 步骤4：安装依赖（和之前一致）
+      # 步骤4：安装依赖
       - name: Install dependencies
         run: |
           cd armbian-build
@@ -37,11 +39,20 @@ jobs:
           sudo apt install -y qemu-user-static binfmt-support
           sudo update-binfmts --enable qemu-aarch64
 
-      # 步骤5：编译 T68M 镜像（参数不变）
+      # 步骤5：编译 T68M 镜像
       - name: Compile T68M image
         run: |
           cd armbian-build
-          sudo ./compile.sh               BOARD=lyt-t68m               BRANCH=current               RELEASE=jammy               BUILD_MINIMAL=no               BUILD_DESKTOP=yes               KERNEL_CONFIGURE=no               FAMILY=rockchip-rk3568               KERNELVERSION=6.1.12-current               ARCH=arm64
+          sudo ./compile.sh \
+              BOARD=lyt-t68m \
+              BRANCH=current \
+              RELEASE=jammy \
+              BUILD_MINIMAL=no \
+              BUILD_DESKTOP=yes \
+              KERNEL_CONFIGURE=no \
+              FAMILY=rockchip-rk3568 \
+              KERNELVERSION=6.1.12-current \
+              ARCH=arm64
 
       # 步骤6：上传产物
       - name: Upload build artifacts
