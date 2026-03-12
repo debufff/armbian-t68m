@@ -1,64 +1,29 @@
 name: DTS to DTB Compiler (GitHub Actions)
-on: [workflow_dispatch]  # 手动触发
+on: [workflow_dispatch]
 
 jobs:
   compile-dtb:
     runs-on: ubuntu-22.04
     steps:
-      # 步骤1：拉取你的代码仓库（包含 DTS 文件）
       - name: Checkout your repository
         uses: actions/checkout@v4
 
-      # 步骤2：安装设备树编译器（dtc）
       - name: Install device-tree-compiler
         run: |
           sudo apt update
           sudo apt install -y device-tree-compiler
-          # 验证安装
           dtc --version
-          echo "✅ dtc 编译器安装完成"
 
-      # 步骤3：编译 DTS 为 DTB（核心步骤）
-      - name: Compile DTS to DTB
+      - name: Compile official RK3568 DTB (for testing)
         run: |
-          # ========== 配置区（修改为你的实际路径） ==========
-          DTS_FILE="userpatches/board-dts/rk3568-lyt-t68m.dts"  # 你的 DTS 文件路径
-          INCLUDE_DIR="lib/config/rockchip/rk3568/"             # 可选：.dtsi 依赖目录（没有则留空）
-          # ================================================
+          # 下载官方 RK3568 DTS（无语法错误）
+          wget -O rk3568.dts https://raw.githubusercontent.com/torvalds/linux/master/arch/arm64/boot/dts/rockchip/rk3568.dtsi
+          # 编译为 DTB
+          dtc -I dts -O dtb -o rk3568-test.dtb rk3568.dts
+          ls -lh rk3568-test.dtb
 
-          # 检查 DTS 文件是否存在
-          if [ ! -f "$DTS_FILE" ]; then
-            echo "❌ 错误：DTS 文件不存在 → $DTS_FILE"
-            exit 1
-          fi
-
-          # 生成 DTB 文件名（自动替换后缀）
-          DTB_FILE="${DTS_FILE%.dts}.dtb"
-
-          # 编译命令（支持依赖目录）
-          echo "📝 开始编译：$DTS_FILE → $DTB_FILE"
-          if [ -n "$INCLUDE_DIR" ] && [ -d "$INCLUDE_DIR" ]; then
-            # 带 .dtsi 依赖编译
-            dtc -I dts -O dtb -o "$DTB_FILE" -i "$INCLUDE_DIR" "$DTS_FILE"
-          else
-            # 无依赖编译
-            dtc -I dts -O dtb -o "$DTB_FILE" "$DTS_FILE"
-          fi
-
-          # 验证编译结果
-          if [ -f "$DTB_FILE" ]; then
-            echo "✅ 编译成功！DTB 文件路径：$DTB_FILE"
-            ls -lh "$DTB_FILE"  # 显示文件大小
-          else
-            echo "❌ 编译失败！"
-            exit 1
-          fi
-
-      # 步骤4：上传编译好的 DTB 文件（供下载）
-      - name: Upload DTB artifact
+      - name: Upload test DTB
         uses: actions/upload-artifact@v4
         with:
-          name: T68M-DTB
-          path: |
-            userpatches/board-dts/rk3568-lyt-t68m.dtb  # 编译后的 DTB 路径
-            userpatches/board-dts/rk3568-lyt-t68m.dts  # 同时上传源 DTS 文件
+          name: RK3568-Test-DTB
+          path: rk3568-test.dtb
