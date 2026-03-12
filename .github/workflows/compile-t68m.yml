@@ -16,7 +16,7 @@ jobs:
       - name: Checkout your T68M config
         uses: actions/checkout@v4
         with:
-          repository: 你的用户名/armbian-t68m-custom
+          repository: debufff/armbian-t68m
           path: t68m-config
 
       # 步骤3：完整覆盖官方配置（包含补丁/DTS/内核配置）
