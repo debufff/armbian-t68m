@@ -5,33 +5,26 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      # 步骤1：拉取 Armbian 官方源码
+      # 步骤1：拉取 Armbian 官方源码（公开仓库，无需认证）
       - name: Checkout Armbian official source
         uses: actions/checkout@v4
         with:
           repository: armbian/build
           path: armbian-build
 
-      # 步骤2：拉取你的 T68M 完整配置（修正为实际仓库名）
-      - name: Checkout your T68M config
-        uses: actions/checkout@v4
-        with:
-          repository: debufff/armbian-t68m
-          path: t68m-config
-
-      # 步骤3：完整覆盖官方配置（新增创建 userpatches 目录）
+      # 步骤2：直接在当前仓库中复制你的配置（无需再拉取一次）
       - name: Overwrite all T68M config
         run: |
           # 覆盖设备主配置
-          cp -f t68m-config/config/boards/lyt-t68m.conf armbian-build/config/boards/
+          cp -f config/boards/lyt-t68m.conf armbian-build/config/boards/
           # 覆盖内核配置文件
-          cp -f t68m-config/config/kernel/linux-rk35xx-legacy.config armbian-build/config/kernel/
-          # 先创建 userpatches 目录（关键修复）
+          cp -f config/kernel/linux-rk35xx-legacy.config armbian-build/config/kernel/
+          # 先创建 userpatches 目录
           mkdir -p armbian-build/userpatches/
           # 覆盖所有补丁/DTS
-          cp -rf t68m-config/userpatches/* armbian-build/userpatches/
+          cp -rf userpatches/* armbian-build/userpatches/
 
-      # 步骤4：安装依赖
+      # 步骤3：安装依赖
       - name: Install dependencies
         run: |
           cd armbian-build
@@ -39,7 +32,7 @@ jobs:
           sudo apt install -y qemu-user-static binfmt-support
           sudo update-binfmts --enable qemu-aarch64
 
-      # 步骤5：编译 T68M 镜像
+      # 步骤4：编译 T68M 镜像
       - name: Compile T68M image
         run: |
           cd armbian-build
@@ -54,7 +47,7 @@ jobs:
               KERNELVERSION=6.1.12-current \
               ARCH=arm64
 
-      # 步骤6：上传产物
+      # 步骤5：上传产物
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
