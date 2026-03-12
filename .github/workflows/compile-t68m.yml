@@ -13,6 +13,7 @@ jobs:
           wget -O armbian-build.zip https://github.com/armbian/build/archive/refs/heads/main.zip
           unzip -q armbian-build.zip
           mv build-main armbian-build
+          sudo chown -R $USER:$USER armbian-build
 
       - name: Overwrite all T68M config
         run: |
@@ -21,18 +22,22 @@ jobs:
           mkdir -p armbian-build/userpatches/
           cp -rf userpatches/* armbian-build/userpatches/
 
-      - name: Install dependencies
+      - name: Install minimal dependencies (only ARM64 needed)
         run: |
-          cd armbian-build
           sudo apt update
-          sudo apt install -y qemu-user-static binfmt-support
+          sudo apt install -y qemu-user-static qemu-aarch64 binfmt-support
           sudo update-binfmts --enable qemu-aarch64
 
-      # ✅ 关键修复：添加 EXPERT=1 和 DESKTOP_APPGROUPS_SELECTED="" 彻底跳过所有交互
+      # ✅ 关键修复：用 sed 修复 patching.py 中的空 COLUMNS 问题
+      - name: Fix patching.py console_width bug
+        run: |
+          sed -i 's/console_width = int(os.environ.get("COLUMNS", 160)) - 12/console_width = int(os.environ.get("COLUMNS", "160")) - 12/' armbian-build/lib/tools/patching.py
+
       - name: Compile T68M image
         run: |
           cd armbian-build
-          sudo ./compile.sh \
+          export SKIP_BINFMT_SETUP=1
+          ./compile.sh \
               BOARD=lyt-t68m \
               BRANCH=current \
               RELEASE=jammy \
