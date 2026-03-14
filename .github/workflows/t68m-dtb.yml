@@ -13,24 +13,30 @@ jobs:
       - name: Prepare environment
         run: |
           sudo apt update && sudo apt upgrade -y
-          sudo apt install -y git make gcc-aarch64-linux-gnu device-tree-compiler bc flex bison
+          sudo apt install -y git make gcc-aarch64-linux-gnu device-tree-compiler bc flex bison libssl-dev python3-distutils
 
-      - name: Clone Armbian
+      - name: Clone Armbian build repo
         run: |
           git clone --depth=1 https://github.com/armbian/build.git armbian-build
 
-      - name: Copy configs
+      # ✅ 关键：直接修改源码，禁用内核配置 dialog
+      - name: Patch Armbian to disable kernel config interaction
+        run: |
+          cd armbian-build
+          sed -i 's/^interactive_config_ask_kernel_configure() {/interactive_config_ask_kernel_configure() {\n  return 0\n  #/' lib/functions/configuration/interactive.sh
+          echo "✅ Patched kernel config interaction to be non-interactive"
+
+      - name: Copy custom configs
         run: |
           mkdir -p armbian-build/config/boards/ armbian-build/config/kernel/ armbian-build/userpatches/
           cp -f config/boards/lyt-t68m.conf armbian-build/config/boards/
           cp -f config/kernel/linux-rk35xx-current.config armbian-build/config/kernel/
           cp -rf userpatches/* armbian-build/userpatches/
 
-      - name: Build image (ULTIMATE NON-INTERACTIVE)
+      - name: Build Armbian image (no more dialog errors!)
         run: |
           cd armbian-build
-          # ✅ 组合拳：KERNEL_CONFIG=none + yes 应答，彻底绕过所有交互
-          KERNEL_CONFIG=none \
+          # 应答桌面选择（LXQt），内核配置已被 patch 禁用
           yes "lxqt\n" | ./compile.sh \
             BOARD=lyt-t68m \
             KERNEL_TARGET=current \
@@ -38,7 +44,7 @@ jobs:
             BUILD_DTB=yes \
             LINUXCONFIG=linux-rk35xx-current.config
 
-      - name: Extract DTB
+      - name: Extract DTB from kernel source
         run: |
           KERNEL_DIR=$(find armbian-build/output/build/ -name "linux-*-rk35xx" -type d)
           cd $KERNEL_DIR
@@ -46,7 +52,7 @@ jobs:
           make ARCH=arm64 arch/arm64/boot/dts/rockchip/rk3568-lyt-t68m.dtb
           cp arch/arm64/boot/dts/rockchip/rk3568-lyt-t68m.dtb ../../../../output/images/
 
-      - name: Upload artifacts
+      - name: Upload all artifacts
         uses: actions/upload-artifact@v4
         with:
           name: Armbian-T68M-LXQt-Browser
