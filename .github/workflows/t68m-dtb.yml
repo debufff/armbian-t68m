@@ -1,8 +1,8 @@
-name: Build Armbian for LYT-T68M
+name: Build Armbian for LYT-T68M (with DTB)
 
 on:
   workflow_dispatch:  # 手动触发编译
-  push:               # 代码推送时自动触发（可选）
+  push:               # 代码推送自动触发（可选，可注释）
     branches: [ main ]
     paths:
       - 'config/**'
@@ -18,62 +18,77 @@ jobs:
 
       - name: Prepare build environment
         run: |
-          # 更新系统并安装依赖
+          # 更新系统+安装编译依赖（含DTB编译必需工具）
           sudo apt update && sudo apt upgrade -y
-          sudo apt install -y git make gcc gcc-aarch64-linux-gnu device-tree-compiler bc flex bison
+          sudo apt install -y \
+            git make gcc gcc-aarch64-linux-gnu device-tree-compiler \
+            bc flex bison libssl-dev python3-distutils
 
       - name: Clone Armbian build repo
         run: |
           git clone --depth=1 https://github.com/armbian/build.git armbian-build
 
-      - name: Copy custom configs
+      - name: Copy custom configs (fix dir not exist)
         run: |
-          # 复制板型配置
+          # 1. 复制板型配置（先创建目录）
+          mkdir -p armbian-build/config/boards/
           cp -f config/boards/lyt-t68m.conf armbian-build/config/boards/
-          # 复制内核配置
+          
+          # 2. 复制内核配置（先创建目录）
+          mkdir -p armbian-build/config/kernel/
           cp -f config/kernel/linux-rk35xx-current.config armbian-build/config/kernel/
-          # 复制用户补丁
+          
+          # 3. 复制用户补丁（先创建目录）
+          mkdir -p armbian-build/userpatches/
           cp -rf userpatches/* armbian-build/userpatches/
+          
+          # 验证复制结果
+          echo "=== Verify copied files ==="
+          ls -lh armbian-build/config/boards/
+          ls -lh armbian-build/config/kernel/
+          ls -lh armbian-build/userpatches/kernel/current/
 
-      - name: Build Armbian image
+      - name: Build Armbian image (force DTB build)
         run: |
           cd armbian-build
-          # 强制编译，清理缓存，指定板型和内核分支
+          # 核心编译参数：指定板型+内核分支+清理缓存+强制编译DTB
           ./compile.sh \
             BOARD=lyt-t68m \
             KERNEL_TARGET=current \
             CLEAN_LEVEL=full \
             BUILD_DTB=yes \
-            FULL_DESKTOP=yes
+            FULL_DESKTOP=yes \
+            LINUXCONFIG=linux-rk35xx-current.config
 
-      - name: Extract DTB from kernel source
+      - name: Extract DTB from kernel source (100% generate)
         run: |
-          # 找到内核源码目录
+          # 找到内核源码目录（适配云编译路径）
           KERNEL_DIR=$(find armbian-build/output/build/ -name "linux-*-rk35xx" -type d)
           if [ -z "$KERNEL_DIR" ]; then
-              echo "Kernel directory not found!"
+              echo "❌ Kernel directory not found!"
               exit 1
           fi
-          echo "Using kernel dir: $KERNEL_DIR"
+          echo "✅ Found kernel dir: $KERNEL_DIR"
           
-          # 手动编译 DTB（确保生成）
+          # 手动编译DTB（双重保障，确保生成）
           cd $KERNEL_DIR
           make ARCH=arm64 rockchip_linux_defconfig
           make ARCH=arm64 arch/arm64/boot/dts/rockchip/rk3568-lyt-t68m.dtb
           
-          # 复制 DTB 到镜像输出目录
+          # 复制DTB到镜像输出目录
           cp arch/arm64/boot/dts/rockchip/rk3568-lyt-t68m.dtb ../../../../output/images/
           
-          # 验证 DTB 是否存在
+          # 最终验证
+          echo "=== Final DTB check ==="
           ls -lh armbian-build/output/images/*.dtb
 
-      - name: Upload all artifacts
+      - name: Upload all artifacts (img + dtb + sha + txt)
         uses: actions/upload-artifact@v4
         with:
-          name: Armbian-T68M
+          name: Armbian-T68M-Full
           path: |
             armbian-build/output/images/*.img
             armbian-build/output/images/*.sha
             armbian-build/output/images/*.txt
-            armbian-build/output/images/*.dtb  # 单独上传 DTB 文件
-          retention-days: 7  # 产物保留7天（可按需修改）
+            armbian-build/output/images/*.dtb
+          retention-days: 7  # 产物保留7天，可按需修改
