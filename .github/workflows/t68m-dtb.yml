@@ -1,4 +1,4 @@
-name: Build Armbian for LYT-T68M (with DTB)
+name: Build Armbian for LYT-T68M (Light LXQt + Browser Only)
 
 on:
   workflow_dispatch:
@@ -38,18 +38,18 @@ jobs:
           ls -lh armbian-build/config/kernel/
           ls -lh armbian-build/userpatches/kernel/current/
 
-      - name: Build Armbian image (non-interactive + force DTB)
+      - name: Build Armbian image (LXQt + Browser Only)
         run: |
           cd armbian-build
-          # ✅ 用 -n 替代 --non-interactive，兼容旧版 Armbian
-          ./compile.sh \
+          # ✅ 精准应答两次交互：
+          # 1. 桌面环境选 LXQt（轻量）；2. 预装软件仅选浏览器（空值=仅基础+指定的Firefox）
+          yes "lxqt
+          " | ./compile.sh \
             BOARD=lyt-t68m \
             KERNEL_TARGET=current \
             CLEAN_LEVEL=full \
             BUILD_DTB=yes \
-            FULL_DESKTOP=yes \
-            LINUXCONFIG=linux-rk35xx-current.config \
-            -n
+            LINUXCONFIG=linux-rk35xx-current.config
 
       - name: Extract DTB from kernel source
         run: |
@@ -69,7 +69,7 @@ jobs:
       - name: Upload all artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Armbian-T68M-Full
+          name: Armbian-T68M-LXQt-Browser
           path: |
             armbian-build/output/images/*.img
             armbian-build/output/images/*.sha
