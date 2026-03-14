@@ -1,60 +1,79 @@
-name: Build Armbian for LYT-T68M (Light LXQt + Browser Only)
-
-on:
-  workflow_dispatch:
+name: Compile T68M (rockchip64-6.12)
+on: [workflow_dispatch]
 
 jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      - name: Checkout code
+      - name: Checkout your T68M config
         uses: actions/checkout@v4
 
-      - name: Prepare environment
+      - name: Download Armbian official source
         run: |
-          sudo apt update && sudo apt upgrade -y
-          sudo apt install -y git make gcc-aarch64-linux-gnu device-tree-compiler bc flex bison libssl-dev python3-distutils
+          wget -O armbian-build.zip https://github.com/armbian/build/archive/refs/heads/main.zip
+          unzip -q armbian-build.zip
+          mv build-main armbian-build
+          sudo chown -R $USER:$USER armbian-build
 
-      - name: Clone Armbian build repo
+      - name: Overwrite all T68M config
         run: |
-          git clone --depth=1 https://github.com/armbian/build.git armbian-build
-
-      # ✅ 关键：直接修改源码，禁用内核配置 dialog
-      - name: Patch Armbian to disable kernel config interaction
-        run: |
-          cd armbian-build
-          sed -i 's/^interactive_config_ask_kernel_configure() {/interactive_config_ask_kernel_configure() {\n  return 0\n  #/' lib/functions/configuration/interactive.sh
-          echo "✅ Patched kernel config interaction to be non-interactive"
-
-      - name: Copy custom configs
-        run: |
-          mkdir -p armbian-build/config/boards/ armbian-build/config/kernel/ armbian-build/userpatches/
           cp -f config/boards/lyt-t68m.conf armbian-build/config/boards/
-          cp -f config/kernel/linux-rk35xx-current.config armbian-build/config/kernel/
+          cp -f config/kernel/linux-rk35xx-legacy.config armbian-build/config/kernel/
+          mkdir -p armbian-build/userpatches/
           cp -rf userpatches/* armbian-build/userpatches/
 
-      - name: Build Armbian image (no more dialog errors!)
+      # ✅ 仅安装必要依赖（适配ARM64编译）
+      - name: Install minimal dependencies (only ARM64 needed)
+        run: |
+          sudo apt update
+          sudo apt install -y qemu-user-static binfmt-support
+          sudo update-binfmts --enable qemu-aarch64
+
+      # ✅ 修复patching.py控制台宽度bug
+      - name: Fix patching.py console_width bug
+        run: |
+          sed -i 's/console_width = int(os.environ.get("COLUMNS", 160)) - 12/console_width = int(os.environ.get("COLUMNS", "160")) - 12/' armbian-build/lib/tools/patching.py
+
+      # ✅ 编译（核心：用你的方式跳过交互 + 轻量LXQt + 仅浏览器）
+      - name: Compile T68M image (Light LXQt + Browser Only)
         run: |
           cd armbian-build
-          # 应答桌面选择（LXQt），内核配置已被 patch 禁用
-          yes "lxqt\n" | ./compile.sh \
-            BOARD=lyt-t68m \
-            KERNEL_TARGET=current \
-            CLEAN_LEVEL=full \
-            BUILD_DTB=yes \
-            LINUXCONFIG=linux-rk35xx-current.config
+          export SKIP_BINFMT_SETUP=1
+          ./compile.sh \
+              BOARD=lyt-t68m \
+              BRANCH=current \
+              RELEASE=jammy \
+              BUILD_MINIMAL=no \
+              BUILD_DESKTOP=yes \
+              DESKTOP_ENVIRONMENT=lxqt \          # 性能最小的LXQt桌面
+              DESKTOP_ENVIRONMENT_CONFIG_NAME=config_base \  # 基础配置，无多余软件
+              DESKTOP_APPGROUPS_SELECTED="browser" \         # 仅预装浏览器组
+              EXTRA_PACKAGES="firefox-esr" \                 # 指定轻量Firefox ESR
+              REMOVE_PACKAGES="libreoffice* thunderbird* vlc*" \ # 移除耗资源软件
+              EXPERT=1 \                              # 专家模式，减少交互
+              KERNEL_CONFIGURE=no \                   # 核心：禁用内核配置交互
+              FAMILY=rockchip-rk3568 \
+              KERNELVERSION=6.1.12-current \
+              ARCH=arm64
 
-      - name: Extract DTB from kernel source
+      # ✅ 提取独立DTB + 上传所有产物
+      - name: Extract standalone DTB file
         run: |
+          # 找到内核源码目录
           KERNEL_DIR=$(find armbian-build/output/build/ -name "linux-*-rk35xx" -type d)
-          cd $KERNEL_DIR
-          make ARCH=arm64 rockchip_linux_defconfig
-          make ARCH=arm64 arch/arm64/boot/dts/rockchip/rk3568-lyt-t68m.dtb
-          cp arch/arm64/boot/dts/rockchip/rk3568-lyt-t68m.dtb ../../../../output/images/
+          if [ -n "$KERNEL_DIR" ]; then
+              cd $KERNEL_DIR
+              # 手动编译DTB（确保生成）
+              make ARCH=arm64 rockchip_linux_defconfig
+              make ARCH=arm64 arch/arm64/boot/dts/rockchip/rk3568-lyt-t68m.dtb
+              # 复制到产物目录
+              cp arch/arm64/boot/dts/rockchip/rk3568-lyt-t68m.dtb ../../../../output/images/
+              echo "✅ Standalone DTB file generated"
+          fi
 
-      - name: Upload all artifacts
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Armbian-T68M-LXQt-Browser
+          name: T68M-rockchip64-6.12-image (LXQt + Firefox)
           path: armbian-build/output/images/
           retention-days: 7
