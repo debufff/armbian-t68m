@@ -1,4 +1,4 @@
-name: Build Armbian for LYT-T68M (Light Xfce + Browser Only)
+name: Build Armbian for LYT-T68M (Stable Xfce - No Unknown Args)
 
 on:
   workflow_dispatch:
@@ -19,54 +19,41 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Prepare build environment
+      - name: Prepare environment
         run: |
           sudo apt update && sudo apt upgrade -y
-          sudo apt install -y \
-            git make gcc gcc-aarch64-linux-gnu device-tree-compiler \
-            bc flex bison qemu-user-static binfmt-support \
-            libssl-dev python3-distutils unzip
+          sudo apt install -y git make gcc-aarch64-linux-gnu device-tree-compiler bc flex bison qemu-user-static binfmt-support libssl-dev python3-distutils unzip
 
       - name: Clone Armbian official repo
-        run: |
-          git clone --depth=1 https://github.com/armbian/build.git armbian-build
+        run: git clone --depth=1 https://github.com/armbian/build.git armbian-build
 
-      - name: Copy custom configs
+      - name: Copy configs
         run: |
           mkdir -p armbian-build/config/boards/ armbian-build/config/kernel/ armbian-build/userpatches/
           cp -f config/boards/lyt-t68m.conf armbian-build/config/boards/
           cp -f config/kernel/linux-rk35xx-current.config armbian-build/config/kernel/
           cp -rf userpatches/* armbian-build/userpatches/
 
-      - name: Build image (Fixed Desktop to Xfce - 100% Supported)
+      - name: Build image (ULTIMATE FIX: Single Line - No Format Issues)
         run: |
           cd armbian-build
           export SKIP_BINFMT_SETUP=1
           unset COLUMNS LINES
-          ./compile.sh \
-            BOARD=lyt-t68m \
-            BRANCH=current \
-            RELEASE=jammy \
-            ARCH=arm64 \
-            CLEAN_LEVEL=full \
-            LINUXCONFIG=linux-rk35xx-current.config \
-            KERNEL_CONFIGURE=no \
-            EXPERT=1 \
-            BUILD_DESKTOP=yes \
-            DESKTOP_ENVIRONMENT=xfce \          # ✅ 改用官方必支持的 xfce 轻量桌面
-            DESKTOP_ENVIRONMENT_CONFIG_NAME=config_base
+          # ✅ 关键：写成单行，避免 \ 换行导致的空参数报错
+          # 只使用 Armbian 官方绝对支持的核心参数
+          ./compile.sh BOARD=lyt-t68m BRANCH=current RELEASE=jammy ARCH=arm64 CLEAN_LEVEL=full LINUXCONFIG=linux-rk35xx-current.config KERNEL_CONFIGURE=no EXPERT=1 BUILD_DESKTOP=yes DESKTOP_ENVIRONMENT=xfce DESKTOP_ENVIRONMENT_CONFIG_NAME=config_base
 
-      - name: Extract standalone DTB file
+      - name: Extract DTB
         run: |
           KERNEL_DIR=$(find armbian-build/output/build/ -name "linux-*-rk35xx" -type d | head -1)
           if [ -n "$KERNEL_DIR" ]; then
-            cd $KERNEL_DIR
+            cd "$KERNEL_DIR"
             make ARCH=arm64 rockchip_linux_defconfig
             make ARCH=arm64 arch/arm64/boot/dts/rockchip/rk3568-lyt-t68m.dtb
             cp arch/arm64/boot/dts/rockchip/rk3568-lyt-t68m.dtb ../../../../output/images/
           fi
 
-      - name: Upload all artifacts
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: T68M-rockchip64-image-${{ github.run_id }}
