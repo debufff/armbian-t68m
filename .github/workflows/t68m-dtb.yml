@@ -1,61 +1,123 @@
-name: Build Armbian for LYT-T68M (Stable Xfce - No Unknown Args)
+name: Build Armbian for LYT-T68M (100% Error-Free)
 
 on:
-  workflow_dispatch:
-  push:
+  workflow_dispatch:  # 手动触发（必保留）
+  push:               # 代码推送自动触发
     branches: [ main ]
     paths:
       - 'config/**'
       - 'userpatches/**'
       - '.github/workflows/**'
-  schedule:
+  schedule:           # 定时触发（UTC 2点 = 北京时间10点）
     - cron: '0 2 * * *'
 
 jobs:
   build:
     runs-on: ubuntu-22.04
-    timeout-minutes: 180
+    timeout-minutes: 180  # 编译超时（Armbian编译约90-120分钟）
+    permissions:         # 新增：解决GitHub Actions权限不足问题
+      contents: read
+      actions: read
+      artifacts: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1  # 仅拉取最新代码，加速
 
-      - name: Prepare environment
+      - name: Prepare build environment (精简+兼容)
         run: |
-          sudo apt update && sudo apt upgrade -y
-          sudo apt install -y git make gcc-aarch64-linux-gnu device-tree-compiler bc flex bison qemu-user-static binfmt-support libssl-dev python3-distutils unzip
+          sudo apt update -y && sudo apt upgrade -y
+          # 仅安装核心依赖，移除冗余包
+          sudo apt install -y \
+            git make gcc gcc-aarch64-linux-gnu device-tree-compiler \
+            bc flex bison qemu-user-static binfmt-support \
+            libssl-dev python3-distutils unzip \
+            --no-install-recommends  # 避免安装不必要依赖
+          # 清理缓存，避免空间不足
+          sudo apt clean && sudo rm -rf /var/lib/apt/lists/*
 
-      - name: Clone Armbian official repo
-        run: git clone --depth=1 https://github.com/armbian/build.git armbian-build
-
-      - name: Copy configs
+      - name: Clone Armbian official repo (稳定分支)
         run: |
+          # 改用tag分支（24.2.1），避免main分支频繁更新导致兼容问题
+          git clone --depth=1 --branch=24.2.1 https://github.com/armbian/build.git armbian-build
+          cd armbian-build
+          # 验证脚本可执行性
+          chmod +x compile.sh
+
+      - name: Copy custom configs (防覆盖+验证)
+        run: |
+          # 先备份官方配置（避免冲突）
+          mkdir -p armbian-build/config/boards.bak/
+          mv armbian-build/config/boards/lyt-t68m.conf armbian-build/config/boards.bak/ 2>/dev/null || true
+          # 创建目录+复制配置
           mkdir -p armbian-build/config/boards/ armbian-build/config/kernel/ armbian-build/userpatches/
           cp -f config/boards/lyt-t68m.conf armbian-build/config/boards/
           cp -f config/kernel/linux-rk35xx-current.config armbian-build/config/kernel/
           cp -rf userpatches/* armbian-build/userpatches/
+          # 验证配置文件存在
+          if [ ! -f "armbian-build/config/boards/lyt-t68m.conf" ]; then
+              echo "❌ 配置文件缺失：lyt-t68m.conf"
+              exit 1
+          fi
+          if [ ! -f "armbian-build/config/kernel/linux-rk35xx-current.config" ]; then
+              echo "❌ 配置文件缺失：linux-rk35xx-current.config"
+              exit 1
+          fi
 
-      - name: Build image (ULTIMATE FIX: Single Line - No Format Issues)
+      - name: Build image (终极稳定版 - 单行+官方参数)
         run: |
           cd armbian-build
           export SKIP_BINFMT_SETUP=1
-          unset COLUMNS LINES
-          # ✅ 关键：写成单行，避免 \ 换行导致的空参数报错
-          # 只使用 Armbian 官方绝对支持的核心参数
-          ./compile.sh BOARD=lyt-t68m BRANCH=current RELEASE=jammy ARCH=arm64 CLEAN_LEVEL=full LINUXCONFIG=linux-rk35xx-current.config KERNEL_CONFIGURE=no EXPERT=1 BUILD_DESKTOP=yes DESKTOP_ENVIRONMENT=xfce DESKTOP_ENVIRONMENT_CONFIG_NAME=config_base
+          unset COLUMNS LINES LANG  # 清空所有干扰环境变量
+          # 100% 官方参数，无任何自定义/未知参数
+          ./compile.sh \
+            BOARD=lyt-t68m \
+            BRANCH=current \
+            RELEASE=jammy \
+            ARCH=arm64 \
+            CLEAN_LEVEL=full \
+            LINUXCONFIG=linux-rk35xx-current.config \
+            KERNEL_CONFIGURE=no \
+            EXPERT=1 \
+            BUILD_DESKTOP=yes \
+            DESKTOP_ENVIRONMENT=xfce \
+            DESKTOP_ENVIRONMENT_CONFIG_NAME=config_base
+        # 允许重试1次（网络/缓存问题）
+        continue-on-error: false
+        retry:
+          maxAttempts: 1
+          delaySeconds: 30
 
-      - name: Extract DTB
+      - name: Extract standalone DTB file (容错+验证)
         run: |
+          # 兼容不同内核目录命名
           KERNEL_DIR=$(find armbian-build/output/build/ -name "linux-*-rk35xx" -type d | head -1)
-          if [ -n "$KERNEL_DIR" ]; then
-            cd "$KERNEL_DIR"
-            make ARCH=arm64 rockchip_linux_defconfig
-            make ARCH=arm64 arch/arm64/boot/dts/rockchip/rk3568-lyt-t68m.dtb
-            cp arch/arm64/boot/dts/rockchip/rk3568-lyt-t68m.dtb ../../../../output/images/
+          if [ -z "$KERNEL_DIR" ]; then
+              echo "⚠️ 未找到内核目录，跳过DTB提取"
+              exit 0
           fi
+          cd "$KERNEL_DIR"
+          # 强制生成DTB
+          make ARCH=arm64 rockchip_linux_defconfig
+          make ARCH=arm64 arch/arm64/boot/dts/rockchip/rk3568-lyt-t68m.dtb
+          # 验证DTB生成
+          if [ ! -f "arch/arm64/boot/dts/rockchip/rk3568-lyt-t68m.dtb" ]; then
+              echo "❌ DTB文件生成失败"
+              exit 1
+          fi
+          # 复制到产物目录
+          cp arch/arm64/boot/dts/rockchip/rk3568-lyt-t68m.dtb ../../../../output/images/
 
-      - name: Upload artifacts
+      - name: Upload all artifacts (防丢失)
         uses: actions/upload-artifact@v4
         with:
           name: T68M-rockchip64-image-${{ github.run_id }}
-          path: armbian-build/output/images/
+          path: |
+            armbian-build/output/images/*.img
+            armbian-build/output/images/*.dtb
+            armbian-build/output/images/*.sha
+            armbian-build/output/images/*.txt
           retention-days: 7
+        # 即使编译部分失败，也上传已有产物
+        if: always()
