@@ -1,15 +1,5 @@
 name: Build Armbian for LYT-T68M (100% Error-Free)
-
-on:
-  workflow_dispatch:  # 手动触发（必保留）
-  push:               # 代码推送自动触发
-    branches: [ main ]
-    paths:
-      - 'config/**'
-      - 'userpatches/**'
-      - '.github/workflows/**'
-  schedule:           # 定时触发（UTC 2点 = 北京时间10点）
-    - cron: '0 2 * * *'
+on: [workflow_dispatch]
 
 jobs:
   build:
