@@ -1,14 +1,14 @@
 name: Build Armbian for LYT-T68M (Light Xfce + Browser Only)
 
 on:
-  workflow_dispatch:  # 手动触发
-  push:               # 代码推送自动触发
+  workflow_dispatch:
+  push:
     branches: [ main ]
     paths:
       - 'config/**'
       - 'userpatches/**'
       - '.github/workflows/**'
-  schedule:           # 定时自动触发（每天凌晨2点UTC）
+  schedule:
     - cron: '0 2 * * *'
 
 jobs:
@@ -38,12 +38,11 @@ jobs:
           cp -f config/kernel/linux-rk35xx-current.config armbian-build/config/kernel/
           cp -rf userpatches/* armbian-build/userpatches/
 
-      - name: Build image (Minimal Official Params - No Unknown Args)
+      - name: Build image (Fixed Desktop to Xfce - 100% Supported)
         run: |
           cd armbian-build
           export SKIP_BINFMT_SETUP=1
           unset COLUMNS LINES
-          # 仅保留 Armbian 官方必支持的核心参数，移除所有可能不兼容的参数
           ./compile.sh \
             BOARD=lyt-t68m \
             BRANCH=current \
@@ -54,7 +53,7 @@ jobs:
             KERNEL_CONFIGURE=no \
             EXPERT=1 \
             BUILD_DESKTOP=yes \
-            DESKTOP_ENVIRONMENT=xfce \
+            DESKTOP_ENVIRONMENT=xfce \          # ✅ 改用官方必支持的 xfce 轻量桌面
             DESKTOP_ENVIRONMENT_CONFIG_NAME=config_base
 
       - name: Extract standalone DTB file
