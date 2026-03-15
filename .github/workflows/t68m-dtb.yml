@@ -10,10 +10,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Prepare environment (精简依赖，仅保留必要工具)
+      - name: Prepare environment
         run: |
           sudo apt update && sudo apt upgrade -y
-          # 移除expect（无需模拟交互），仅保留编译核心依赖
           sudo apt install -y git make gcc-aarch64-linux-gnu device-tree-compiler bc flex bison qemu-user-static binfmt-support
 
       - name: Clone Armbian build repo
@@ -27,37 +26,35 @@ jobs:
           cp -f config/kernel/linux-rk35xx-current.config armbian-build/config/kernel/
           cp -rf userpatches/* armbian-build/userpatches/
 
-      # ✅ 核心修改：用官方参数+命令行配置跳过所有交互
-      - name: Build image (No Interactive - Official Params)
+      - name: Build image (No Interactive - Fixed Params)
         run: |
           cd armbian-build
           export SKIP_BINFMT_SETUP=1
-          # 关键：KERNEL_CONFIGURE=no(禁用内核交互) + EXPERT=1(专家模式) + 命令行锁定桌面/软件
           ./compile.sh \
-              BOARD=lyt-t68m \
-              KERNEL_TARGET=current \
-              CLEAN_LEVEL=full \
-              BUILD_DTB=yes \
-              LINUXCONFIG=linux-rk35xx-current.config \
-              KERNEL_CONFIGURE=no \          # 官方参数：禁用内核配置交互
-              EXPERT=1 \                     # 专家模式：跳过非必要交互
-              BUILD_DESKTOP=yes \            # 启用桌面
-              DESKTOP_ENVIRONMENT=lxqt \     # 锁定轻量LXQt桌面（无交互选择）
-              DESKTOP_ENVIRONMENT_CONFIG_NAME=config_base \ # 基础配置，无多余软件
-              DESKTOP_APPGROUPS_SELECTED="browser" \        # 仅预装浏览器组
-              EXTRA_PACKAGES="firefox-esr" \                # 指定Firefox ESR浏览器
-              REMOVE_PACKAGES="libreoffice* thunderbird* vlc*" \ # 移除耗资源软件
-              ARCH=arm64 \
-              RELEASE=jammy
+            BOARD=lyt-t68m \
+            KERNEL_TARGET=current \
+            CLEAN_LEVEL=full \
+            BUILD_DTB=yes \
+            LINUXCONFIG=linux-rk35xx-current.config \
+            KERNEL_CONFIGURE=no \
+            EXPERT=1 \
+            BUILD_DESKTOP=yes \
+            DESKTOP_ENVIRONMENT=lxqt \
+            DESKTOP_ENVIRONMENT_CONFIG_NAME=config_base \
+            DESKTOP_APPGROUPS_SELECTED=browser \
+            EXTRA_PACKAGES=firefox-esr \
+            REMOVE_PACKAGES="libreoffice* thunderbird* vlc*" \
+            ARCH=arm64 \
+            RELEASE=jammy
 
       - name: Extract DTB
         run: |
           KERNEL_DIR=$(find armbian-build/output/build/ -name "linux-*-rk35xx" -type d)
           if [ -n "$KERNEL_DIR" ]; then
-              cd $KERNEL_DIR
-              make ARCH=arm64 rockchip_linux_defconfig
-              make ARCH=arm64 arch/arm64/boot/dts/rockchip/rk3568-lyt-t68m.dtb
-              cp arch/arm64/boot/dts/rockchip/rk3568-lyt-t68m.dtb ../../../../output/images/
+            cd $KERNEL_DIR
+            make ARCH=arm64 rockchip_linux_defconfig
+            make ARCH=arm64 arch/arm64/boot/dts/rockchip/rk3568-lyt-t68m.dtb
+            cp arch/arm64/boot/dts/rockchip/rk3568-lyt-t68m.dtb ../../../../output/images/
           fi
 
       - name: Upload artifacts
