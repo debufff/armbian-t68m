@@ -1,25 +1,20 @@
-name: Build Armbian for LYT-T68M (Light LXQt + Browser Only)
+name: Build Armbian for LYT-T68M (Light Xfce + Browser Only)
 
-# ✅ 新增自动触发规则（按需选择）
 on:
-  workflow_dispatch:  # 保留手动触发
-  push:               # 代码推送自动触发（仅指定分支/文件）
+  workflow_dispatch:  # 手动触发
+  push:               # 代码推送自动触发
     branches: [ main ]
     paths:
-      - 'config/**'       # 配置文件修改时触发
-      - 'userpatches/**'  # 补丁文件修改时触发
-      - '.github/workflows/**' # 工作流文件修改时触发
-  schedule:           # 定时自动触发（可选，每天凌晨2点）
+      - 'config/**'
+      - 'userpatches/**'
+      - '.github/workflows/**'
+  schedule:           # 定时自动触发（每天凌晨2点UTC）
     - cron: '0 2 * * *'
 
 jobs:
   build:
     runs-on: ubuntu-22.04
-    # ✅ 新增：失败重试 + 超时控制
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-    timeout-minutes: 180  # 编译超时时间（Armbian编译约90-120分钟）
+    timeout-minutes: 180
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -42,15 +37,13 @@ jobs:
           cp -f config/boards/lyt-t68m.conf armbian-build/config/boards/
           cp -f config/kernel/linux-rk35xx-current.config armbian-build/config/kernel/
           cp -rf userpatches/* armbian-build/userpatches/
-          ls -lh armbian-build/config/boards/
-          ls -lh armbian-build/config/kernel/
 
-      - name: Build image (Fixed Desktop Name + No Interactive)
+      - name: Build image (Minimal Official Params - No Unknown Args)
         run: |
           cd armbian-build
           export SKIP_BINFMT_SETUP=1
           unset COLUMNS LINES
-          # 使用xfce（官方必支持的轻量桌面，替代lxqt避免拼写/兼容问题）
+          # 仅保留 Armbian 官方必支持的核心参数，移除所有可能不兼容的参数
           ./compile.sh \
             BOARD=lyt-t68m \
             BRANCH=current \
@@ -61,11 +54,8 @@ jobs:
             KERNEL_CONFIGURE=no \
             EXPERT=1 \
             BUILD_DESKTOP=yes \
-            DESKTOP_ENVIRONMENT=xfce \          # 改用xfce，兼容性更好
-            DESKTOP_ENVIRONMENT_CONFIG_NAME=config_base \
-            DESKTOP_APPGROUPS_SELECTED=browser \
-            EXTRA_PACKAGES=firefox-esr \
-            REMOVE_PACKAGES='libreoffice* thunderbird* vlc*'
+            DESKTOP_ENVIRONMENT=xfce \
+            DESKTOP_ENVIRONMENT_CONFIG_NAME=config_base
 
       - name: Extract standalone DTB file
         run: |
@@ -80,19 +70,6 @@ jobs:
       - name: Upload all artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Armbian-T68M-Xfce-Browser-${{ github.run_id }}  # 新增运行ID，避免产物覆盖
+          name: T68M-rockchip64-image-${{ github.run_id }}
           path: armbian-build/output/images/
-          retention-days: 7  # 产物保留7天，可按需调整
-
-      # ✅ 新增：编译完成后发送通知（可选，需配置GitHub Secrets）
-      - name: Send completion notification (Optional)
-        if: always()  # 无论成功/失败都通知
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: `Armbian编译${{ job.status }} - T68M (${{ github.run_id }})`,
-              body: `编译结果：${{ job.status }}\n运行ID：${{ github.run_id }}\n触发方式：${{ github.event_name }}`
-            })
+          retention-days: 7
