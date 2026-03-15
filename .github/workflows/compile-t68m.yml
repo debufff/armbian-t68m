@@ -18,7 +18,7 @@ jobs:
       - name: Overwrite all T68M config
         run: |
           cp -f config/boards/lyt-t68m.conf armbian-build/config/boards/
-          cp -f config/kernel/linux-rk35xx-legacy.config armbian-build/config/kernel/
+          cp -f config/kernel/linux-rk35xx-current.config armbian-build/config/kernel/
           mkdir -p armbian-build/userpatches/
           cp -rf userpatches/* armbian-build/userpatches/
 
