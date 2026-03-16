@@ -2,7 +2,7 @@ name: Convert DTS to DTB
 on:
   push:
     paths:
-      - '*.dts'  # 仅当推送 .dts 文件时触发
+      - 'userpatches/**/*.dts'  # 仅监听 userpatches 目录下的 DTS 文件变更
   workflow_dispatch:  # 允许手动触发
 
 jobs:
@@ -17,28 +17,54 @@ jobs:
       - name: Install Device Tree Compiler
         run: sudo apt update && sudo apt install -y device-tree-compiler
 
-      # 3. 转换所有 DTS 文件为 DTB
-      - name: Convert DTS to DTB
+      # 3. 转换 userpatches 目录下的所有 DTS 文件为 DTB
+      - name: Convert DTS to DTB (userpatches)
         run: |
-          # 遍历所有 .dts 文件，批量转换
-          for dts_file in *.dts; do
-            if [ -f "$dts_file" ]; then
-              dtb_file="${dts_file%.dts}.dtb"
-              echo "Converting $dts_file to $dtb_file..."
-              dtc -I dts -O dtb -o "$dtb_file" "$dts_file" -@
+          # 检查 userpatches 目录是否存在
+          if [ ! -d "userpatches" ]; then
+            echo "❌ userpatches directory not found!"
+            exit 1
+          fi
+          
+          # 遍历 userpatches 下所有 .dts 文件，保持目录结构生成 .dtb
+          find ./userpatches -name "*.dts" -type f | while read dts_file; do
+            # 替换文件后缀为 .dtb
+            dtb_file="${dts_file%.dts}.dtb"
+            echo "🔄 Converting $dts_file → $dtb_file"
+            
+            # 执行转换（带错误检查）
+            if dtc -I dts -O dtb -o "$dtb_file" "$dts_file" -@ -W no-unit_address_vs_reg; then
+              echo "✅ Success: $dtb_file"
+            else
+              echo "❌ Failed to convert $dts_file"
+              exit 1
             fi
           done
+          
+          # 列出生成的 .dtb 文件，方便调试
+          echo -e "\n📁 Generated DTB files:"
+          find ./userpatches -name "*.dtb" -type f
 
-      # 4. 将生成的 DTB 文件提交回仓库
+      # 4. 提交生成的 DTB 文件到仓库
       - name: Commit DTB files
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
-          git add *.dtb
+          
+          # 查找并添加所有生成的 .dtb 文件（避免 pathspec 报错）
+          dtb_files=$(find ./userpatches -name "*.dtb" -type f)
+          if [ -z "$dtb_files" ]; then
+            echo "ℹ️  No DTB files generated, skip commit"
+            exit 0
+          fi
+          
+          # 添加所有 .dtb 文件
+          git add $dtb_files
+          
           # 仅当有变更时提交
           if git diff --cached --quiet; then
-            echo "No DTB files to commit"
+            echo "ℹ️  No changes to commit"
           else
-            git commit -m "Auto-generate DTB from DTS"
+            git commit -m "🔧 Auto-generate DTB from userpatches/*.dts"
             git push
           fi
