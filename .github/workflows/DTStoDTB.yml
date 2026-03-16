@@ -1,0 +1,44 @@
+name: Convert DTS to DTB
+on:
+  push:
+    paths:
+      - '*.dts'  # 仅当推送 .dts 文件时触发
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  build-dtb:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. 拉取仓库代码
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. 安装 DTC 工具
+      - name: Install Device Tree Compiler
+        run: sudo apt update && sudo apt install -y device-tree-compiler
+
+      # 3. 转换所有 DTS 文件为 DTB
+      - name: Convert DTS to DTB
+        run: |
+          # 遍历所有 .dts 文件，批量转换
+          for dts_file in *.dts; do
+            if [ -f "$dts_file" ]; then
+              dtb_file="${dts_file%.dts}.dtb"
+              echo "Converting $dts_file to $dtb_file..."
+              dtc -I dts -O dtb -o "$dtb_file" "$dts_file" -@
+            fi
+          done
+
+      # 4. 将生成的 DTB 文件提交回仓库
+      - name: Commit DTB files
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add *.dtb
+          # 仅当有变更时提交
+          if git diff --cached --quiet; then
+            echo "No DTB files to commit"
+          else
+            git commit -m "Auto-generate DTB from DTS"
+            git push
+          fi
