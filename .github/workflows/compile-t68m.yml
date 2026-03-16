@@ -1,4 +1,4 @@
-name: Compile T68M (Xfce Desktop - Keep Original Config)
+name: Compile T68M (Xfce Desktop - Fix Kernel Config)
 on: [workflow_dispatch]
 
 jobs:
@@ -15,29 +15,31 @@ jobs:
           mv build-main armbian-build
           sudo chown -R $USER:$USER armbian-build
 
-      - name: Overwrite all T68M config (KEEP ORIGINAL lyt-t68m.conf)
+      - name: Overwrite config (KEEP ORIGINAL lyt-t68m.conf)
         run: |
+          # 保留原配置文件，同时把内核配置放到正确路径
           cp -f config/boards/lyt-t68m.conf armbian-build/config/boards/
+          mkdir -p armbian-build/config/kernel/
           cp -f config/kernel/linux-rk35xx-current.config armbian-build/config/kernel/
           mkdir -p armbian-build/userpatches/
           cp -rf userpatches/* armbian-build/userpatches/
 
-      - name: Install minimal dependencies (ARM64 + Desktop)
+      - name: Install dependencies
         run: |
           sudo apt update
           sudo apt install -y qemu-user-static binfmt-support
           sudo update-binfmts --enable qemu-aarch64
 
-      - name: Fix patching.py console_width bug
+      - name: Fix patching.py bug
         run: |
           sed -i 's/console_width = int(os.environ.get("COLUMNS", 160)) - 12/console_width = int(os.environ.get("COLUMNS", "160")) - 12/' armbian-build/lib/tools/patching.py
 
-      - name: Compile T68M image (Fix Kernel Config - Keep Original Config)
+      - name: Compile T68M image (Force Kernel Config - No Modify Config File)
         run: |
           cd armbian-build
           export SKIP_BINFMT_SETUP=1
           unset COLUMNS LINES
-          # ✅ 关键：显式传递 LINUXCONFIG，确保内核配置被识别
+          # 强制指定所有核心参数，覆盖配置文件加载逻辑
           ./compile.sh \
               BOARD=lyt-t68m \
               BRANCH=current \
@@ -49,9 +51,9 @@ jobs:
               EXPERT=1 \
               KERNEL_CONFIGURE=no \
               ARCH=arm64 \
-              LINUXCONFIG="linux-rk35xx-current.config"  # 强制指定内核配置文件
+              LINUXCONFIG="linux-rk35xx-current.config"
 
-      - name: Upload build artifacts
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: T68M-rockchip64-image (Xfce Desktop)
