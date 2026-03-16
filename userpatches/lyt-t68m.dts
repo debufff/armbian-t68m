@@ -1,0 +1,236 @@
+/*
+ * RK3568 LYT T68m Device Tree for Linux 6.1.76
+ * Compatible with Armbian 25.02
+ */
+/dts-v1/;
+#include "rk3568.dtsi"
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/clock/rk3568-cru.h>
+#include <dt-bindings/power/rk3568-power.h>
+#include <dt-bindings/reset/rk3568-cru.h>
+
+/ {
+	model = "LYT T68m based on Rockchip RK3568";
+	compatible = "lyt,rk3568-lyt-t68m", "rockchip,rk3568";
+
+	aliases {
+		ethernet0 = &gmac0;
+		ethernet1 = &gmac1;
+		mmc0 = &mmc0;
+		mmc1 = &mmc1;
+		serial0 = &uart2;
+		led0 = &status_led;
+		led1 = &power_led;
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+	};
+
+	memory@0 {
+		device_type = "memory";
+		reg = <0x0 0x00000000 0x0 0x80000000>; // 2GB 默认配置，可按需修改
+	};
+
+	/* 电源域适配 6.1 内核 */
+	vdd_npu: vdd-npu-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "vdd_npu";
+		regulator-min-microvolt = <800000>;
+		regulator-max-microvolt = <1200000>;
+		regulator-always-on;
+		regulator-boot-on;
+		vin-supply = <&vcc5v0_sys>;
+		status = "okay";
+	};
+
+	vcc5v0_sys: vcc5v0-sys-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc5v0_sys";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		regulator-always-on;
+		regulator-boot-on;
+		vin-supply = <&dc_12v>;
+		status = "okay";
+	};
+
+	vcc3v3_sys: vcc3v3-sys-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc3v3_sys";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		regulator-always-on;
+		regulator-boot-on;
+		vin-supply = <&vcc5v0_sys>;
+		status = "okay";
+	};
+
+	dc_12v: dc-12v-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "dc_12v";
+		regulator-min-microvolt = <12000000>;
+		regulator-max-microvolt = <12000000>;
+		regulator-always-on;
+		regulator-boot-on;
+		status = "okay";
+	};
+
+	/* 指示灯适配 6.1 内核 */
+	status_led: led@0 {
+		compatible = "gpio-leds";
+		status = "okay";
+		heartbeat {
+			label = "lyt:red:status";
+			gpios = <&gpio1 RK_PB4 GPIO_ACTIVE_LOW>;
+			linux,default-trigger = "heartbeat";
+			default-state = "off";
+		};
+	};
+
+	power_led: led@1 {
+		compatible = "gpio-leds";
+		status = "okay";
+		power {
+			label = "lyt:green:power";
+			gpios = <&gpio1 RK_PB5 GPIO_ACTIVE_LOW>;
+			linux,default-trigger = "default-on";
+			default-state = "on";
+		};
+	};
+};
+
+/* 6.1 内核时钟节点适配：ACLK_NPU → CLK_NPU */
+&npu {
+	compatible = "rockchip,rk3568-npu";
+	reg = <0x0 0xfe800000 0x0 0x800000>;
+	interrupts = <GIC_SPI 164 IRQ_TYPE_LEVEL_HIGH>;
+	clocks = <&cru CLK_NPU>, <&cru HCLK_NPU>; // 关键修改：替换 ACLK_NPU 为 CLK_NPU
+	clock-names = "aclk_npu", "hclk_npu";
+	power-domains = <&power RK3568_PD_NPU>;
+	status = "okay"; // 启用 NPU
+};
+
+/* PCIe 适配 6.1 内核：新增 num-lanes 属性 */
+&pcie2x1 {
+	compatible = "rockchip,rk3568-pcie", "snps,dw-pcie";
+	reg = <0x0 0xfe200000 0x0 0x10000>;
+	reg-names = "dbi";
+	#address-cells = <3>;
+	#size-cells = <2>;
+	device_type = "pci";
+	ranges = <0x82000000 0x0 0x00000000 0x0 0xfe210000 0x0 0x00010000>,
+			 <0x81000000 0x0 0x00000000 0x1 0x00000000 0x1 0x00000000>;
+	num-lanes = <1>; // 6.1 内核新增必填属性
+	clocks = <&cru ACLK_PCIE2x1>, <&cru HCLK_PCIE2x1>, <&cru SCLK_PCIE2x1_REF>;
+	clock-names = "aclk", "hclk", "refclk";
+	resets = <&cru RST_PCIE2x1>;
+	reset-names = "pcie";
+	power-domains = <&power RK3568_PD_PCIE>;
+	status = "okay";
+};
+
+&pcie3x1 {
+	num-lanes = <1>; // 6.1 内核新增必填属性
+	status = "okay";
+};
+
+&pcie3x2 {
+	num-lanes = <1>; // 6.1 内核新增必填属性
+	status = "okay";
+};
+
+/* 以太网适配 6.1 内核：调整 PHY 配置 */
+&gmac0 {
+	compatible = "rockchip,rk3568-gmac", "snps,dwmac-5.20a";
+	reg = <0x0 0xfe300000 0x0 0x10000>;
+	interrupts = <GIC_SPI 112 IRQ_TYPE_LEVEL_HIGH>,
+				 <GIC_SPI 113 IRQ_TYPE_LEVEL_HIGH>;
+	interrupt-names = "macirq", "eth_wake_irq";
+	clocks = <&cru ACLK_GMAC0>, <&cru PCLK_GMAC0>, <&cru SCLK_GMAC0_RX_TX>,
+			 <&cru SCLK_GMAC0_PTP>;
+	clock-names = "aclk_mac", "pclk_mac", "txclk", "ptpclk";
+	phy-mode = "rgmii-rxid";
+	phy-handle = <&phy0>;
+	phy-supply = <&vcc3v3_sys>;
+	snps,reset-gpio = <&gpio0 RK_PA7 GPIO_ACTIVE_LOW>;
+	snps,reset-active-low;
+	snps,reset-delays-us = <0 10000 1000000>;
+	tx_delay = <0x30>;
+	rx_delay = <0x10>;
+	status = "okay";
+};
+
+&gmac1 {
+	phy-mode = "rgmii-rxid";
+	phy-handle = <&phy1>;
+	snps,reset-gpio = <&gpio0 RK_PA6 GPIO_ACTIVE_LOW>;
+	tx_delay = <0x30>;
+	rx_delay = <0x10>;
+	status = "okay";
+};
+
+/* USB 适配 6.1 内核：调整 PHY 命名 */
+&u2phy0 {
+	status = "okay";
+};
+
+&u2phy1 {
+	status = "okay";
+};
+
+&usbdrd30 {
+	status = "okay";
+};
+
+&usbhost30 {
+	status = "okay";
+};
+
+/* 存储适配 6.1 内核 */
+&mmc0 {
+	bus-width = <4>;
+	max-frequency = <150000000>;
+	cap-mmc-highspeed;
+	cap-sd-highspeed;
+	disable-wp;
+	mmc-hs200-1_8v;
+	no-sdio;
+	no-mmc;
+	sd-uhs-sdr104;
+	vmmc-supply = <&vcc3v3_sys>;
+	vqmmc-supply = <&vcc3v3_sys>;
+	status = "okay";
+};
+
+&mmc1 {
+	bus-width = <8>;
+	max-frequency = <200000000>;
+	non-removable;
+	cap-mmc-highspeed;
+	mmc-hs200-1_8v;
+	mmc-hs400-1_8v;
+	vmmc-supply = <&vcc3v3_sys>;
+	vqmmc-supply = <&vcc3v3_sys>;
+	status = "okay";
+};
+
+/* 调试串口适配 */
+&uart2 {
+	status = "okay";
+};
+
+/* PMIC 适配 6.1 内核 */
+&rk809 {
+	status = "okay";
+};
+
+/* 音频适配 6.1 内核 */
+&i2s0 {
+	status = "okay";
+};
+
+&hdmi {
+	status = "okay";
+};
