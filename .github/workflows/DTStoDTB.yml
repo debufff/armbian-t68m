@@ -10,60 +10,48 @@ jobs:
   build-dtb:
     runs-on: ubuntu-latest
     steps:
-      # 1. 拉取仓库代码（确保拿到最新文件）
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 1  # 拉取完整代码
 
-      # 2. 安装DTC（稳定版）
-      - name: Install device-tree-compiler
+      - name: Install dependencies
         run: |
-          sudo apt update && sudo apt install -y device-tree-compiler
-          echo "✅ DTC installed successfully!"
-          dtc --version
+          sudo apt update && sudo apt install -y device-tree-compiler git
 
-      # 3. 检查并修复文件缺失问题
-      - name: Check & fix missing files
+      - name: Download missing dt-bindings headers
         run: |
-          # 进入userpatches目录
-          cd userpatches
+          # 创建dt-bindings目录
+          mkdir -p userpatches/dt-bindings/{input,gpio,clock,power,reset}
           
-          # 检查lyt-t68m.dts是否存在
-          if [ ! -f "lyt-t68m.dts" ]; then
-            echo "❌ ERROR: lyt-t68m.dts not found in userpatches!"
-            echo "ℹ️ Please check the file name/path: userpatches/lyt-t68m.dts"
-            exit 1
-          fi
+          # 下载input/input.h
+          curl -o userpatches/dt-bindings/input/input.h https://raw.githubusercontent.com/torvalds/linux/master/include/dt-bindings/input/input.h
           
-          # 检查rk3568.dtsi，缺失则自动下载6.1版本
-          if [ ! -f "rk3568.dtsi" ]; then
-            echo "⚠️ rk3568.dtsi missing, auto-downloading 6.1 version..."
-            curl -o rk3568.dtsi https://raw.githubusercontent.com/armbian/linux-rockchip/6.1/arch/arm64/boot/dts/rockchip/rk3568.dtsi
-            if [ ! -f "rk3568.dtsi" ]; then
-              echo "❌ Failed to download rk3568.dtsi!"
-              exit 1
-            fi
-          fi
+          # 下载gpio/gpio.h
+          curl -o userpatches/dt-bindings/gpio/gpio.h https://raw.githubusercontent.com/torvalds/linux/master/include/dt-bindings/gpio/gpio.h
           
-          # 列出目录文件，方便排查
-          echo "✅ Files in userpatches:"
-          ls -l
+          # 下载rk3568-cru.h
+          curl -o userpatches/dt-bindings/clock/rk3568-cru.h https://raw.githubusercontent.com/rockchip-linux/kernel/6.1/include/dt-bindings/clock/rk3568-cru.h
+          
+          # 下载rk3568-power.h
+          curl -o userpatches/dt-bindings/power/rk3568-power.h https://raw.githubusercontent.com/rockchip-linux/kernel/6.1/include/dt-bindings/power/rk3568-power.h
+          
+          # 下载rk3568-cru.h (reset)
+          curl -o userpatches/dt-bindings/reset/rk3568-cru.h https://raw.githubusercontent.com/rockchip-linux/kernel/6.1/include/dt-bindings/reset/rk3568-cru.h
+          
+          # 列出下载的文件
+          ls -l userpatches/dt-bindings/
 
-      # 4. 转换DTS到DTB（带详细日志）
       - name: Convert DTS to DTB
         run: |
           cd userpatches
-          echo "🔄 Starting conversion: lyt-t68m.dts → lyt-t68m.dtb"
-          
-          # 核心转换命令（简化参数，避免警告干扰）
+          # 核心命令：-i 指定本地dt-bindings目录
           dtc \
-            -I dts \          # 输入格式：DTS
-            -O dtb \          # 输出格式：DTB
-            -o lyt-t68m.dtb \ # 输出文件
-            -H epapr \        # 适配RK3568
-            -@ \              # 启用符号表
-            lyt-t68m.dts      # 输入文件
+            -I dts \
+            -O dtb \
+            -o lyt-t68m.dtb \
+            -H epapr \
+            -@ \
+            -i ./ \  # 包含当前目录的dt-bindings
+            lyt-t68m.dts
           
           # 验证结果
           if [ -f "lyt-t68m.dtb" ]; then
@@ -74,24 +62,15 @@ jobs:
             exit 1
           fi
 
-      # 5. 提交DTB到仓库
       - name: Commit DTB to repo
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
-          
           cd ..
-          # 检查DTB是否存在
           if [ -f "userpatches/lyt-t68m.dtb" ]; then
             git add userpatches/lyt-t68m.dtb
-            # 仅当有变更时提交
             if ! git diff --cached --quiet; then
-              git commit -m "Auto-generate lyt-t68m.dtb (6.1.76 kernel)"
+              git commit -m "Auto-generate lyt-t68m.dtb (6.1.76)"
               git push
-              echo "✅ DTB committed to repo!"
-            else
-              echo "ℹ️ No changes to commit (DTB already up-to-date)"
             fi
-          else
-            echo "ℹ️ No DTB file to commit"
           fi
