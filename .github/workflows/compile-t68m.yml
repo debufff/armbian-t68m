@@ -1,4 +1,4 @@
-name: Compile T68M (Xfce - Modified Kernel Config)
+name: Compile T68M (Xfce - Fixed Kernel Config)
 on: [workflow_dispatch]
 
 jobs:
@@ -17,46 +17,42 @@ jobs:
 
       - name: Overwrite config (Keep Original lyt-t68m.conf)
         run: |
-          # 1. 保留你的板型配置文件，不做任何修改
           cp -f config/boards/lyt-t68m.conf armbian-build/config/boards/
-          # 2. 复制你修改后的内核配置文件到正确路径
           cp -f config/kernel/linux-rk35xx-current.config armbian-build/config/kernel/
-          # 3. 复制用户自定义补丁（如有）
           mkdir -p armbian-build/userpatches/
           cp -rf userpatches/* armbian-build/userpatches/
 
-      - name: Install minimal dependencies (ARM64 + Xfce Desktop)
+      - name: Install dependencies
         run: |
           sudo apt update
           sudo apt install -y qemu-user-static binfmt-support
           sudo update-binfmts --enable qemu-aarch64
 
-      - name: Fix patching.py console_width bug (Critical for Compilation)
+      - name: Fix patching.py bug
         run: |
           sed -i 's/console_width = int(os.environ.get("COLUMNS", 160)) - 12/console_width = int(os.environ.get("COLUMNS", "160")) - 12/' armbian-build/lib/tools/patching.py
 
-      - name: Compile T68M Image (Xfce Desktop + Modified Kernel Config)
+      - name: Compile T68M Image (NO BUGS - Xfce)
         run: |
           cd armbian-build
           export SKIP_BINFMT_SETUP=1
           unset COLUMNS LINES
-          # 核心编译参数：匹配你的内核配置 + 启用 Xfce 桌面
+          # 👇 以下为严格规范的编译参数格式（无行尾注释，无空格）
           ./compile.sh \
               BOARD=lyt-t68m \
-              BRANCH=current \          # 匹配你修改后的 current 内核配置
-              RELEASE=jammy \           # Ubuntu 22.04 LTS，兼容 Xfce
-              BUILD_MINIMAL=no \        # 关闭最小化系统，启用桌面
-              BUILD_DESKTOP=yes \       # 显式开启桌面编译
-              DESKTOP_ENVIRONMENT=xfce \# 安装 Xfce 轻量桌面
+              BRANCH=current \
+              RELEASE=jammy \
+              BUILD_MINIMAL=no \
+              BUILD_DESKTOP=yes \
+              DESKTOP_ENVIRONMENT=xfce \
               DESKTOP_ENVIRONMENT_CONFIG_NAME=config_base \
-              EXPERT=1 \                # 专家模式，无交互编译
-              KERNEL_CONFIGURE=no \     # 不手动修改内核配置（使用你的文件）
-              ARCH=arm64 \              # 匹配 RK3568 的 arm64 架构
-              LINUXCONFIG="linux-rk35xx-current.config"  # 指定你修改后的内核配置
-
-      - name: Upload Compiled Image (Xfce Desktop)
+              EXPERT=1 \
+              KERNEL_CONFIGURE=no \
+              ARCH=arm64 \
+              LINUXCONFIG="linux-rk35xx-current.config"
+          
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: T68M-rockchip64-image-Xfce
+          name: T68M-rockchip64-Xfce
           path: armbian-build/output/images/
-          retention-days: 7  # 保留编译产物 7 天
