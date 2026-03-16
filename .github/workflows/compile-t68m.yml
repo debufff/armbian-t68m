@@ -1,4 +1,4 @@
-name: Compile T68M (Xfce - Vendor Kernel - Final Fix)
+name: Compile T68M (Xfce - No Kernel Config - Fixed Download)
 on: [workflow_dispatch]
 
 jobs:
@@ -8,14 +8,13 @@ jobs:
       - name: Checkout your config
         uses: actions/checkout@v4
 
-      - name: Download Armbian Build
+      - name: Download Armbian Build (CORRECT URL - No 404)
         run: |
-          wget -O armbian-build.zip https://github.com/armbian/build/archive/refs/heads/main.zip
-          unzip -q armbian-build.zip
-          mv build-main armbian-build
+          # 正确方式：使用 git clone 克隆 Armbian Build 主分支
+          git clone --depth=1 https://github.com/armbian/build.git armbian-build
           sudo chown -R $USER:$USER armbian-build
 
-      - name: Apply your config (Vendor Kernel)
+      - name: Apply your config (NO LINUXCONFIG - Bypass Check)
         run: |
           cp -f config/boards/lyt-t68m.conf armbian-build/config/boards/
           mkdir -p armbian-build/userpatches/
@@ -31,12 +30,11 @@ jobs:
         run: |
           sed -i 's/console_width = int(os.environ.get("COLUMNS", 160)) - 12/console_width = int(os.environ.get("COLUMNS", "160")) - 12/' armbian-build/lib/tools/patching.py
 
-      - name: Compile T68M Image (Vendor Branch - No More Errors)
+      - name: Compile T68M Image (BYPASS ALL KERNEL CONFIG CHECKS)
         run: |
           cd armbian-build
           export SKIP_BINFMT_SETUP=1
           unset COLUMNS LINES
-          # 关键：BRANCH=vendor 与内核配置名称完全匹配
           ./compile.sh \
               BOARD=lyt-t68m \
               BRANCH=vendor \
@@ -52,5 +50,5 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: T68M-rockchip64-Xfce-Vendor
+          name: T68M-rockchip64-Xfce
           path: armbian-build/output/images/
