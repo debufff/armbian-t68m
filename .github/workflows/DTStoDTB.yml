@@ -10,72 +10,60 @@ jobs:
   build-dtb:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      # 1. 拉取代码
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Install build dependencies
+      # 2. 一键安装DTC（官方源，稳定无路径问题）
+      - name: Install DTC (device-tree-compiler)
         run: |
-          sudo apt update && sudo apt install -y git make gcc flex bison
-
-      # 修复：安装 DTC 并确保 PATH 包含 /usr/local/bin
-      - name: Install DTC v1.7.0+
-        run: |
-          sudo apt remove -y device-tree-compiler || true
-          git clone https://git.kernel.org/pub/scm/utils/dtc/dtc.git
-          cd dtc
-          make
-          sudo make install
-          # 强制将 /usr/local/bin 加入 PATH
-          echo "PATH=/usr/local/bin:$PATH" >> $GITHUB_ENV
-          # 验证安装
-          source $GITHUB_ENV
+          sudo apt update && sudo apt install -y device-tree-compiler
+          # 验证DTC是否安装成功
           dtc --version
 
+      # 3. 转换DTS到DTB
       - name: Convert DTS to DTB
         run: |
           cd userpatches
+          # 检查文件是否存在
           if [ ! -f "lyt-t68m.dts" ]; then
-            echo "❌ Missing lyt-t68m.dts in userpatches!"
+            echo "❌ ERROR: lyt-t68m.dts not found in userpatches!"
             exit 1
           fi
           if [ ! -f "rk3568.dtsi" ]; then
-            echo "❌ Missing rk3568.dtsi in userpatches!"
-            exit 1
-          fi
-          
-          # 直接调用 /usr/local/bin/dtc 确保可执行
-          /usr/local/bin/dtc -I dts -O dtb -o lyt-t68m.dtb \
-            lyt-t68m.dts \
-            -@ \
-            -H epapr \
-            -W no-unit_address_vs_reg \
-            -W no-avoid_unnecessary_addr_size \
-            -W no-unique_unit_address
-          
-          if [ -f "lyt-t68m.dtb" ]; then
-            echo "✅ DTB file generated successfully!"
-            ls -l lyt-t68m.dtb
-          else
-            echo "❌ Failed to generate DTB file!"
+            echo "❌ ERROR: rk3568.dtsi not found in userpatches!"
             exit 1
           fi
 
-      - name: Commit DTB to repository
+          # 核心转换命令（直接用系统dtc，无路径问题）
+          dtc -I dts -O dtb -o lyt-t68m.dtb \
+            lyt-t68m.dts \
+            -@ \                  # 启用符号表
+            -H epapr \            # 适配RK3568
+            -W no-unit_address_vs_reg  # 关闭无关警告
+
+          # 验证DTB生成
+          if [ -f "lyt-t68m.dtb" ]; then
+            echo "✅ SUCCESS: lyt-t68m.dtb generated!"
+            ls -lh lyt-t68m.dtb
+          else
+            echo "❌ FAILED: DTB file not generated!"
+            exit 1
+          fi
+
+      # 4. 提交DTB到仓库
+      - name: Commit DTB
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           
           cd ..
-          if ls userpatches/lyt-t68m.dtb 1> /dev/null 2>&1; then
-            git add userpatches/lyt-t68m.dtb
-          else
-            echo "ℹ️ No DTB file to commit"
-            exit 0
-          fi
+          git add userpatches/lyt-t68m.dtb
           
+          # 仅当有变更时提交
           if git diff --cached --quiet; then
             echo "ℹ️ No changes to commit"
           else
-            git commit -m "Auto-generate DTB for LYT T68m (6.1.76)"
+            git commit -m "Auto-generate lyt-t68m.dtb (6.1.76)"
             git push
           fi
