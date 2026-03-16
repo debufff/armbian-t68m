@@ -1,24 +1,27 @@
-name: Compile T68M (Xfce - Valid Kernel Config)
+name: Compile T68M (Xfce - Vendor Kernel - Final Fix)
 on: [workflow_dispatch]
 
 jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      - name: Checkout your T68M config
+      - name: Checkout your config
         uses: actions/checkout@v4
 
-      - name: Download Armbian official source
+      - name: Download Armbian Build
         run: |
           wget -O armbian-build.zip https://github.com/armbian/build/archive/refs/heads/main.zip
           unzip -q armbian-build.zip
           mv build-main armbian-build
           sudo chown -R $USER:$USER armbian-build
 
-      - name: Overwrite config (Use Official RK3568 Kernel Config)
+      - name: Apply your config (Vendor Kernel)
         run: |
+          # 1. 复制你修改后的 lyt-t68m.conf（LINUXCONFIG="linux-rk35xx-vendor.config"）
           cp -f config/boards/lyt-t68m.conf armbian-build/config/boards/
-          cp -f config/kernel/linux-rockchip64-current.config armbian-build/config/kernel/linux-rockchip64-current.config
+          # 2. 复制你修改后的内核配置（已为官方 vendor 名称）
+          cp -f config/kernel/linux-rk35xx-vendor.config armbian-build/config/kernel/
+          # 3. 复制用户补丁
           mkdir -p armbian-build/userpatches/
           cp -rf userpatches/* armbian-build/userpatches/
 
@@ -32,15 +35,15 @@ jobs:
         run: |
           sed -i 's/console_width = int(os.environ.get("COLUMNS", 160)) - 12/console_width = int(os.environ.get("COLUMNS", "160")) - 12/' armbian-build/lib/tools/patching.py
 
-      - name: Compile T68M Image (No Kernel Config Error)
+      - name: Compile T68M Image (Vendor Branch - No More Errors)
         run: |
           cd armbian-build
           export SKIP_BINFMT_SETUP=1
           unset COLUMNS LINES
-          # 不再手动传递 LINUXCONFIG，由配置文件自动识别
+          # 关键：BRANCH=vendor 与内核配置名称完全匹配
           ./compile.sh \
               BOARD=lyt-t68m \
-              BRANCH=current \
+              BRANCH=vendor \
               RELEASE=jammy \
               BUILD_MINIMAL=no \
               BUILD_DESKTOP=yes \
@@ -53,5 +56,5 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: T68M-rockchip64-Xfce
+          name: T68M-rockchip64-Xfce-Vendor
           path: armbian-build/output/images/
