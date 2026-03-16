@@ -2,9 +2,8 @@ name: Convert RK3568 DTS to DTB (6.1.76)
 on:
   push:
     paths:
-      - 'userpatches/rk3568-lyt-t68m.dts'
-      - 'userpatches/lyt-t68m.dts'
-      - 'userpatches/rk3568.dtsi'
+      - 'userpatches/lyt-t68m.dts'       # 监听你新命名的DTS
+      - 'userpatches/rk3568.dtsi'       # 监听芯片级DTSI
   workflow_dispatch:  # 允许手动触发
 
 jobs:
@@ -19,20 +18,16 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt update && sudo apt install -y \
-            git make gcc flex bison \
-            device-tree-compiler
+            git make gcc flex bison
 
       # 3. 升级DTC到1.7.0+（适配6.1内核）
       - name: Upgrade DTC to v1.7.0+
         run: |
-          # 卸载系统低版本DTC
           sudo apt remove -y device-tree-compiler || true
-          # 编译安装最新版DTC
           git clone https://git.kernel.org/pub/scm/utils/dtc/dtc.git
           cd dtc
           make
           sudo make install
-          # 验证版本
           dtc --version
 
       # 4. 进入userpatches目录执行转换
@@ -40,8 +35,8 @@ jobs:
         run: |
           cd userpatches
           # 检查关键文件是否存在
-          if [ ! -f "rk3568-lyt-t68m.dts" ]; then
-            echo "❌ Missing rk3568-lyt-t68m.dts in userpatches!"
+          if [ ! -f "lyt-t68m.dts" ]; then
+            echo "❌ Missing lyt-t68m.dts in userpatches!"
             exit 1
           fi
           if [ ! -f "rk3568.dtsi" ]; then
@@ -50,18 +45,18 @@ jobs:
           fi
           
           # 核心转换命令（适配6.1.76内核参数）
-          dtc -I dts -O dtb -o rk3568-lyt-t68m.dtb \
-            rk3568-lyt-t68m.dts \
-            -@ \                  # 启用符号表
-            -H epapr \            # 兼容PowerPC规范
-            -W no-unit_address_vs_reg \  # 关闭无关警告
+          dtc -I dts -O dtb -o lyt-t68m.dtb \
+            lyt-t68m.dts \
+            -@ \
+            -H epapr \
+            -W no-unit_address_vs_reg \
             -W no-avoid_unnecessary_addr_size \
             -W no-unique_unit_address
           
           # 验证DTB生成
-          if [ -f "rk3568-lyt-t68m.dtb" ]; then
+          if [ -f "lyt-t68m.dtb" ]; then
             echo "✅ DTB file generated successfully!"
-            ls -l rk3568-lyt-t68m.dtb
+            ls -l lyt-t68m.dtb
           else
             echo "❌ Failed to generate DTB file!"
             exit 1
@@ -73,21 +68,17 @@ jobs:
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           
-          # 回到仓库根目录
           cd ..
-          
-          # 检查并添加DTB文件
-          if ls userpatches/rk3568-lyt-t68m.dtb 1> /dev/null 2>&1; then
-            git add userpatches/rk3568-lyt-t68m.dtb
+          if ls userpatches/lyt-t68m.dtb 1> /dev/null 2>&1; then
+            git add userpatches/lyt-t68m.dtb
           else
             echo "ℹ️ No DTB file to commit"
             exit 0
           fi
           
-          # 提交并推送
           if git diff --cached --quiet; then
             echo "ℹ️ No changes to commit"
           else
-            git commit -m "Auto-generate DTB for RK3568 LYT T68m (6.1.76)"
+            git commit -m "Auto-generate DTB for LYT T68m (6.1.76)"
             git push
           fi
