@@ -1,4 +1,4 @@
-name: Compile T68M (Xfce - Vendor Kernel - Final Fix)
+name: Compile T68M (Xfce - No Kernel Config - Final Bypass)
 on: [workflow_dispatch]
 
 jobs:
@@ -10,18 +10,16 @@ jobs:
 
       - name: Download Armbian Build
         run: |
-          wget -O armbian-build.zip https://github.com/armbian/build/archive/refs/heads/main.zip
+          wget -O armbian-build.zip https://github.com/armbian/build/refs/heads/main.zip
           unzip -q armbian-build.zip
           mv build-main armbian-build
           sudo chown -R $USER:$USER armbian-build
 
-      - name: Apply your config (Vendor Kernel)
+      - name: Apply your config (NO LINUXCONFIG - Bypass Check)
         run: |
-          # 1. 复制你修改后的 lyt-t68m.conf（LINUXCONFIG="linux-rk35xx-vendor.config"）
+          # 1. 复制你修改后的 lyt-t68m.conf（已删除 LINUXCONFIG 行）
           cp -f config/boards/lyt-t68m.conf armbian-build/config/boards/
-          # 2. 复制你修改后的内核配置（已为官方 vendor 名称）
-          cp -f config/kernel/linux-rk35xx-vendor.config armbian-build/config/kernel/
-          # 3. 复制用户补丁
+          # 2. 复制用户补丁（DTS 等，不涉及内核配置）
           mkdir -p armbian-build/userpatches/
           cp -rf userpatches/* armbian-build/userpatches/
 
@@ -35,12 +33,12 @@ jobs:
         run: |
           sed -i 's/console_width = int(os.environ.get("COLUMNS", 160)) - 12/console_width = int(os.environ.get("COLUMNS", "160")) - 12/' armbian-build/lib/tools/patching.py
 
-      - name: Compile T68M Image (Vendor Branch - No More Errors)
+      - name: Compile T68M Image (BYPASS ALL KERNEL CONFIG CHECKS)
         run: |
           cd armbian-build
           export SKIP_BINFMT_SETUP=1
           unset COLUMNS LINES
-          # 关键：BRANCH=vendor 与内核配置名称完全匹配
+          # 极简参数：完全不碰内核配置，由 Armbian 自动处理
           ./compile.sh \
               BOARD=lyt-t68m \
               BRANCH=vendor \
@@ -56,5 +54,5 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: T68M-rockchip64-Xfce-Vendor
+          name: T68M-rockchip64-Xfce
           path: armbian-build/output/images/
