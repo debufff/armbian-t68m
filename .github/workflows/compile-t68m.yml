@@ -1,4 +1,4 @@
-name: Compile T68M (Xfce - Fixed Kernel Config)
+name: Compile T68M (Xfce - Valid Kernel Config)
 on: [workflow_dispatch]
 
 jobs:
@@ -15,10 +15,10 @@ jobs:
           mv build-main armbian-build
           sudo chown -R $USER:$USER armbian-build
 
-      - name: Overwrite config (Keep Original lyt-t68m.conf)
+      - name: Overwrite config (Use Official RK3568 Kernel Config)
         run: |
           cp -f config/boards/lyt-t68m.conf armbian-build/config/boards/
-          cp -f config/kernel/linux-rk35xx-current.config armbian-build/config/kernel/
+          cp -f config/kernel/linux-rockchip64-current.config armbian-build/config/kernel/linux-rockchip64-current.config
           mkdir -p armbian-build/userpatches/
           cp -rf userpatches/* armbian-build/userpatches/
 
@@ -32,12 +32,12 @@ jobs:
         run: |
           sed -i 's/console_width = int(os.environ.get("COLUMNS", 160)) - 12/console_width = int(os.environ.get("COLUMNS", "160")) - 12/' armbian-build/lib/tools/patching.py
 
-      - name: Compile T68M Image (NO BUGS - Xfce)
+      - name: Compile T68M Image (No Kernel Config Error)
         run: |
           cd armbian-build
           export SKIP_BINFMT_SETUP=1
           unset COLUMNS LINES
-          # 👇 以下为严格规范的编译参数格式（无行尾注释，无空格）
+          # 不再手动传递 LINUXCONFIG，由配置文件自动识别
           ./compile.sh \
               BOARD=lyt-t68m \
               BRANCH=current \
@@ -48,9 +48,8 @@ jobs:
               DESKTOP_ENVIRONMENT_CONFIG_NAME=config_base \
               EXPERT=1 \
               KERNEL_CONFIGURE=no \
-              ARCH=arm64 \
-              LINUXCONFIG="linux-rk35xx-current.config"
-          
+              ARCH=arm64
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
