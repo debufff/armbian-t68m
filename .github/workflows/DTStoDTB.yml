@@ -2,39 +2,38 @@ name: Convert RK3568 DTS to DTB (6.1.76)
 on:
   push:
     paths:
-      - 'userpatches/lyt-t68m.dts'       # 监听你新命名的DTS
-      - 'userpatches/rk3568.dtsi'       # 监听芯片级DTSI
-  workflow_dispatch:  # 允许手动触发
+      - 'userpatches/lyt-t68m.dts'
+      - 'userpatches/rk3568.dtsi'
+  workflow_dispatch:
 
 jobs:
   build-dtb:
     runs-on: ubuntu-latest
     steps:
-      # 1. 拉取仓库代码
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. 安装编译依赖
       - name: Install build dependencies
         run: |
-          sudo apt update && sudo apt install -y \
-            git make gcc flex bison
+          sudo apt update && sudo apt install -y git make gcc flex bison
 
-      # 3. 升级DTC到1.7.0+（适配6.1内核）
-      - name: Upgrade DTC to v1.7.0+
+      # 修复：安装 DTC 并确保 PATH 包含 /usr/local/bin
+      - name: Install DTC v1.7.0+
         run: |
           sudo apt remove -y device-tree-compiler || true
           git clone https://git.kernel.org/pub/scm/utils/dtc/dtc.git
           cd dtc
           make
           sudo make install
+          # 强制将 /usr/local/bin 加入 PATH
+          echo "PATH=/usr/local/bin:$PATH" >> $GITHUB_ENV
+          # 验证安装
+          source $GITHUB_ENV
           dtc --version
 
-      # 4. 进入userpatches目录执行转换
       - name: Convert DTS to DTB
         run: |
           cd userpatches
-          # 检查关键文件是否存在
           if [ ! -f "lyt-t68m.dts" ]; then
             echo "❌ Missing lyt-t68m.dts in userpatches!"
             exit 1
@@ -44,8 +43,8 @@ jobs:
             exit 1
           fi
           
-          # 核心转换命令（适配6.1.76内核参数）
-          dtc -I dts -O dtb -o lyt-t68m.dtb \
+          # 直接调用 /usr/local/bin/dtc 确保可执行
+          /usr/local/bin/dtc -I dts -O dtb -o lyt-t68m.dtb \
             lyt-t68m.dts \
             -@ \
             -H epapr \
@@ -53,7 +52,6 @@ jobs:
             -W no-avoid_unnecessary_addr_size \
             -W no-unique_unit_address
           
-          # 验证DTB生成
           if [ -f "lyt-t68m.dtb" ]; then
             echo "✅ DTB file generated successfully!"
             ls -l lyt-t68m.dtb
@@ -62,7 +60,6 @@ jobs:
             exit 1
           fi
 
-      # 5. 提交DTB文件到仓库
       - name: Commit DTB to repository
         run: |
           git config --global user.name "GitHub Actions"
