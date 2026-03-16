@@ -5,7 +5,7 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      - name: Checkout config
+      - name: Checkout your T68M config
         uses: actions/checkout@v4
 
       - name: Download Armbian official source
@@ -17,7 +17,6 @@ jobs:
 
       - name: Overwrite all T68M config (KEEP ORIGINAL lyt-t68m.conf)
         run: |
-          # 完全保留你的原配置文件，不做任何修改
           cp -f config/boards/lyt-t68m.conf armbian-build/config/boards/
           cp -f config/kernel/linux-rk35xx-current.config armbian-build/config/kernel/
           mkdir -p armbian-build/userpatches/
@@ -33,28 +32,24 @@ jobs:
         run: |
           sed -i 's/console_width = int(os.environ.get("COLUMNS", 160)) - 12/console_width = int(os.environ.get("COLUMNS", "160")) - 12/' armbian-build/lib/tools/patching.py
 
-      - name: Compile T68M image (Xfce Desktop - Override Invalid Params)
+      - name: Compile T68M image (Fix Kernel Config - Keep Original Config)
         run: |
           cd armbian-build
           export SKIP_BINFMT_SETUP=1
           unset COLUMNS LINES
-          # 核心：命令行参数覆盖配置文件中不识别的项，同时启用 Xfce 桌面
+          # ✅ 关键：显式传递 LINUXCONFIG，确保内核配置被识别
           ./compile.sh \
               BOARD=lyt-t68m \
-              BRANCH=current \          # 覆盖配置文件中 KERNEL_TARGET=current
+              BRANCH=current \
               RELEASE=jammy \
-              BUILD_MINIMAL=no \        # 启用桌面，覆盖配置文件（如有）
-              BUILD_DESKTOP=yes \       # 强制开启桌面，匹配配置文件 DESKTOP_ENVIRONMENT=xfce
-              DESKTOP_ENVIRONMENT=xfce \# 对齐配置文件，确保桌面环境一致
+              BUILD_MINIMAL=no \
+              BUILD_DESKTOP=yes \
+              DESKTOP_ENVIRONMENT=xfce \
               DESKTOP_ENVIRONMENT_CONFIG_NAME=config_base \
               EXPERT=1 \
               KERNEL_CONFIGURE=no \
               ARCH=arm64 \
-              # 手动传递软件参数（跳过配置文件中不识别的 EXTRA/REMOVE_PACKAGES）
-              EXTRA_PACKAGES="firefox-esr" \
-              REMOVE_PACKAGES='libreoffice* thunderbird*'
-        # 关键：忽略配置文件中不识别参数的警告，继续编译（仅警告不报错）
-        continue-on-error: false
+              LINUXCONFIG="linux-rk35xx-current.config"  # 强制指定内核配置文件
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
